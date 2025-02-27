@@ -22,6 +22,12 @@ import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.List;
 
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 import static java.rmi.server.LogStream.log;
 
 public class MirthJNLPLauncher extends Application {
@@ -33,12 +39,23 @@ public class MirthJNLPLauncher extends Application {
         launch(args);
     }
 
+
+    private static final String LOG_FILE = "mirth-launcher-debug.log";
+
+
     @Override
     public void start(Stage primaryStage) {
         urlField = new TextField("https://localhost:8443/webstart.jnlp");
         Button launchButton = new Button("Launch Mirth");
         logArea = new TextArea();
         logArea.setEditable(false);
+
+        // Clear the log file at the start of the program
+        try (PrintWriter out = new PrintWriter(LOG_FILE)) {
+            out.print(""); // Clears the file
+        } catch (IOException e) {
+            System.err.println("ERROR: Could not clear log file - " + e.getMessage());
+        }
 
         launchButton.setOnAction(e -> launchMirthFromURL(urlField.getText()));
 
@@ -139,7 +156,9 @@ public class MirthJNLPLauncher extends Application {
     private void downloadAndLaunch(String jnlpUrl, List<String> coreJars, List<String> extensionJars) {
         log("Starting download process...");
 
-        String baseUrl = jnlpUrl.substring(0, jnlpUrl.lastIndexOf("/"));
+        // Ensure /webstart is always part of the base URL
+        String baseUrl = jnlpUrl.contains("/webstart") ? jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9) : jnlpUrl;
+        String extensionsBaseUrl = baseUrl + "/extensions/libs/"; // Corrected path
         String cacheCoreDir = "mirth-cache/core";
         String cacheExtensionsDir = "mirth-cache/extensions";
 
@@ -160,14 +179,21 @@ public class MirthJNLPLauncher extends Application {
             localJars.add(localFile);
         }
 
-        // Download Extension JARs
+        // Download Extension JARs with Corrected URL Structure
         for (String jar : extensionJars) {
-            String jarUrl = baseUrl + "/" + jar;
-            File localFile = new File(cacheExtensionsDir, new File(jar).getName());
+            String[] jarParts = jar.split("/"); // Extracts extension name
+            if (jarParts.length < 2) {
+                log("WARNING: Skipping invalid extension JAR path: " + jar);
+                continue;
+            }
+            String extensionName = jarParts[1]; // Extracts 'globalmapviewer' from 'libs/globalmapviewer/globalmapviewer-client.jar'
+            String correctedJarUrl = extensionsBaseUrl + extensionName + "/" + jarParts[jarParts.length - 1];
 
-            log("Downloading Extension JAR: " + jarUrl);
-            if (!downloadFile(jarUrl, localFile)) {
-                log("WARNING: Missing extension JAR: " + jarUrl);
+            File localFile = new File(cacheExtensionsDir, new File(jarParts[jarParts.length - 1]).getName());
+
+            log("Downloading Extension JAR: " + correctedJarUrl);
+            if (!downloadFile(correctedJarUrl, localFile)) {
+                log("WARNING: Missing extension JAR: " + correctedJarUrl);
             }
             localJars.add(localFile);
         }
@@ -200,7 +226,18 @@ public class MirthJNLPLauncher extends Application {
     }
 
     private void log(String message) {
-        logArea.appendText(message + "\n");
+        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        String logMessage = "[" + timestamp + "] " + message;
+
+        // Print to console
+        System.out.println(logMessage);
+
+        // Append to log file
+        try (PrintWriter out = new PrintWriter(new FileWriter(LOG_FILE, true))) {
+            out.println(logMessage);
+        } catch (IOException e) {
+            System.err.println("ERROR: Could not write to log file - " + e.getMessage());
+        }
     }
 
     private boolean downloadFile(String urlStr, File destination) {
