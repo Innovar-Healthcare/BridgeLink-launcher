@@ -19,6 +19,9 @@ import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,6 +30,15 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+
+import javax.xml.xpath.XPathFactory;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.DocumentBuilder;
+import org.w3c.dom.Document;
+import org.w3c.dom.NodeList;
+import org.w3c.dom.Element;
 
 import static java.rmi.server.LogStream.log;
 
@@ -75,41 +87,38 @@ public class MirthJNLPLauncher extends Application {
 
             List<String> coreJars = new ArrayList<>();
             List<String> extensionJars = new ArrayList<>();
-            List<String> extensionJnlps = new ArrayList<>();
+            String mirthVersion = "unknown";
 
             NodeList jarList = doc.getElementsByTagName("jar");
+            if (jarList.getLength() == 0) {
+                log("WARNING: No JAR files detected in JNLP!");
+            }
+
             for (int i = 0; i < jarList.getLength(); i++) {
                 Element jarElement = (Element) jarList.item(i);
                 String jarPath = jarElement.getAttribute("href");
-
-                if (jarPath.contains("extensions")) {
-                    extensionJars.add(jarPath);
-                } else {
-                    coreJars.add(jarPath);
-                }
+                log("Detected Core JAR: " + jarPath);
+                coreJars.add(jarPath);
             }
 
-            // Detect and log extension JNLPs
             NodeList extensionList = doc.getElementsByTagName("extension");
             for (int i = 0; i < extensionList.getLength(); i++) {
                 Element extElement = (Element) extensionList.item(i);
                 String extJnlpPath = extElement.getAttribute("href");
-                extensionJnlps.add(extJnlpPath);
-                log("Detected extension JNLP: " + extJnlpPath);
+
+                log("Found extension JNLP: " + extJnlpPath);
+                parseExtensionJnlp(jnlpUrl.substring(0, jnlpUrl.lastIndexOf("/")) + "/" + extJnlpPath, extensionJars);
             }
 
-            log("Core JARs: " + coreJars);
-            log("Extension JARs: " + extensionJars);
-            log("Detected Extension JNLPs: " + extensionJnlps);
-
-            // Process extension JNLP files BEFORE downloading JARs
-            for (String extJnlp : extensionJnlps) {
-                String extJnlpUrl = jnlpUrl.substring(0, jnlpUrl.lastIndexOf("/")) + "/" + extJnlp;
-                log("Processing extension JNLP: " + extJnlpUrl);
-                parseExtensionJnlp(extJnlpUrl, extensionJars);
+            NodeList versionNodes = doc.getElementsByTagName("title");
+            if (versionNodes.getLength() > 0) {
+                mirthVersion = versionNodes.item(0).getTextContent().replaceAll("[^0-9.]", "");
             }
 
-            downloadAndLaunch(jnlpUrl, coreJars, extensionJars);
+            log("Detected Mirth Version: " + mirthVersion);
+            log("Final Core JARs: " + coreJars);
+
+            downloadAndLaunch(jnlpUrl, coreJars, extensionJars, mirthVersion);
         } catch (Exception e) {
             log("Error: " + e.getMessage());
             e.printStackTrace();
@@ -153,46 +162,44 @@ public class MirthJNLPLauncher extends Application {
         }
     }
 
-    private void downloadAndLaunch(String jnlpUrl, List<String> coreJars, List<String> extensionJars) {
-        log("Starting download process...");
+    private void downloadAndLaunch(String jnlpUrl, List<String> coreJars, List<String> extensionJars, String mirthVersion) {
+        log("Starting download process for Mirth version: " + mirthVersion);
 
-        // Ensure /webstart is always part of the base URL
         String baseUrl = jnlpUrl.contains("/webstart") ? jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9) : jnlpUrl;
-        String extensionsBaseUrl = baseUrl + "/extensions/libs/"; // Corrected path
-        String cacheCoreDir = "mirth-cache/core";
-        String cacheExtensionsDir = "mirth-cache/extensions";
+        String cacheDir = "mirth-cache/" + mirthVersion;
+        String cacheCoreDir = cacheDir + "/core";
+        String cacheExtensionsDir = cacheDir + "/extensions";
 
+        // Ensure directories exist
         new File(cacheCoreDir).mkdirs();
         new File(cacheExtensionsDir).mkdirs();
 
         List<File> localJars = new ArrayList<>();
 
-        // Download Core JARs
+        // ✅ Fix Core JAR Download Path
         for (String jar : coreJars) {
-            String jarUrl = baseUrl + "/" + jar;
+            String correctedJarUrl = baseUrl + "/client-lib/" + new File(jar).getName(); // Ensure the correct base path
             File localFile = new File(cacheCoreDir, new File(jar).getName());
 
-            log("Downloading Core JAR: " + jarUrl);
-            if (!downloadFile(jarUrl, localFile)) {
-                log("WARNING: Missing core JAR: " + jarUrl);
+            log("Downloading Core JAR: " + correctedJarUrl);
+            if (!downloadFile(correctedJarUrl, localFile, null)) {
+                log("WARNING: Failed to download core JAR: " + correctedJarUrl);
             }
             localJars.add(localFile);
         }
 
-        // Download Extension JARs with Corrected URL Structure
+        // ✅ Fix Extension JAR Download Path
         for (String jar : extensionJars) {
-            String[] jarParts = jar.split("/"); // Extracts extension name
+            String[] jarParts = jar.split("/");
             if (jarParts.length < 2) {
                 log("WARNING: Skipping invalid extension JAR path: " + jar);
                 continue;
             }
-            String extensionName = jarParts[1]; // Extracts 'globalmapviewer' from 'libs/globalmapviewer/globalmapviewer-client.jar'
-            String correctedJarUrl = extensionsBaseUrl + extensionName + "/" + jarParts[jarParts.length - 1];
-
+            String correctedJarUrl = baseUrl + "/extensions/libs/" + jarParts[1] + "/" + jarParts[jarParts.length - 1];
             File localFile = new File(cacheExtensionsDir, new File(jarParts[jarParts.length - 1]).getName());
 
             log("Downloading Extension JAR: " + correctedJarUrl);
-            if (!downloadFile(correctedJarUrl, localFile)) {
+            if (!downloadFile(correctedJarUrl, localFile, null)) {
                 log("WARNING: Missing extension JAR: " + correctedJarUrl);
             }
             localJars.add(localFile);
@@ -208,15 +215,12 @@ public class MirthJNLPLauncher extends Application {
     private void launchMirth(String mainClass, List<File> jarFiles) throws Exception {
         log("Launching Mirth Client...");
 
-        URL[] urls = jarFiles.stream().map(file -> {
-            try {
-                return file.toURI().toURL();
-            } catch (MalformedURLException e) {
-                throw new RuntimeException(e);
-            }
-        }).toArray(URL[]::new);
+        List<URL> urls = new ArrayList<>();
+        for (File jar : jarFiles) {
+            urls.add(jar.toURI().toURL());
+        }
 
-        URLClassLoader classLoader = new URLClassLoader(urls, ClassLoader.getSystemClassLoader());
+        URLClassLoader classLoader = new URLClassLoader(urls.toArray(new URL[0]), ClassLoader.getSystemClassLoader());
         Thread.currentThread().setContextClassLoader(classLoader);
 
         Class<?> cls = classLoader.loadClass(mainClass);
@@ -240,12 +244,22 @@ public class MirthJNLPLauncher extends Application {
         }
     }
 
-    private boolean downloadFile(String urlStr, File destination) {
+    private boolean downloadFile(String urlStr, File destination, String expectedSha256) {
         try {
-            log("Attempting to download: " + urlStr);
-            URL url = new URL(urlStr);
+            // Skip download if the file already exists and matches the hash
+            if (destination.exists() && expectedSha256 != null) {
+                String actualSha256 = calculateSha256(destination);
+                if (expectedSha256.equalsIgnoreCase(actualSha256)) {
+                    log("Skipping already downloaded file: " + destination.getName());
+                    return true;
+                }
+            }
 
-            try (InputStream in = url.openStream(); FileOutputStream out = new FileOutputStream(destination)) {
+            // Download the file
+            log("Downloading: " + urlStr);
+            URL url = new URL(urlStr);
+            try (InputStream in = url.openStream();
+                 FileOutputStream out = new FileOutputStream(destination)) {
                 byte[] buffer = new byte[4096];
                 int bytesRead;
                 while ((bytesRead = in.read(buffer)) != -1) {
@@ -253,14 +267,36 @@ public class MirthJNLPLauncher extends Application {
                 }
             }
 
+            // Verify hash after download
+            if (expectedSha256 != null) {
+                String actualSha256 = calculateSha256(destination);
+                if (!expectedSha256.equalsIgnoreCase(actualSha256)) {
+                    log("ERROR: SHA-256 mismatch for " + destination.getName());
+                    destination.delete();
+                    return false;
+                }
+            }
+
             log("Saved: " + destination.getAbsolutePath());
             return true;
-        } catch (FileNotFoundException e) {
-            log("WARNING: File not found: " + urlStr + " - Skipping.");
-            return false;
-        } catch (IOException e) {
-            log("ERROR: Failed to download " + urlStr + " - " + e.getMessage());
+        } catch (Exception e) {
+            log("Error downloading file: " + urlStr + " - " + e.getMessage());
             return false;
         }
+    }
+
+    private String calculateSha256(File file) throws IOException, NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream fis = new FileInputStream(file);
+             DigestInputStream dis = new DigestInputStream(fis, digest)) {
+            byte[] buffer = new byte[4096];
+            while (dis.read(buffer) != -1) {}
+        }
+        byte[] hashBytes = digest.digest();
+        StringBuilder hexString = new StringBuilder();
+        for (byte b : hashBytes) {
+            hexString.append(String.format("%02x", b));
+        }
+        return hexString.toString();
     }
 }
