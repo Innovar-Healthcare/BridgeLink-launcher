@@ -162,55 +162,58 @@ public class MirthJNLPLauncher extends Application {
         }
     }
 
-    private void downloadAndLaunch(String jnlpUrl, List<String> coreJars, List<String> extensionJars, String mirthVersion) {
-        log("Starting download process for Mirth version: " + mirthVersion);
+  private void downloadAndLaunch(String jnlpUrl, List<String> coreJars, List<String> extensionJars, String mirthVersion) {
+    log("Starting download process for Mirth version: " + mirthVersion);
 
-        String baseUrl = jnlpUrl.contains("/webstart") ? jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9) : jnlpUrl;
-        String cacheDir = "mirth-cache/" + mirthVersion;
-        String cacheCoreDir = cacheDir + "/core";
-        String cacheExtensionsDir = cacheDir + "/extensions";
+    String baseUrl = jnlpUrl.contains("/webstart") ? jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9) : jnlpUrl;
+    String cacheDir = "mirth-cache/" + mirthVersion;
+    String cacheCoreDir = cacheDir + "/core";
+    String cacheExtensionsDir = cacheDir + "/extensions";
 
-        // Ensure directories exist
-        new File(cacheCoreDir).mkdirs();
-        new File(cacheExtensionsDir).mkdirs();
+    // Ensure core directory exists
+    new File(cacheCoreDir).mkdirs();
 
-        List<File> localJars = new ArrayList<>();
+    List<File> localJars = new ArrayList<>();
 
-        // ✅ Fix Core JAR Download Path
-        for (String jar : coreJars) {
-            String correctedJarUrl = baseUrl + "/client-lib/" + new File(jar).getName(); // Ensure the correct base path
-            File localFile = new File(cacheCoreDir, new File(jar).getName());
+    // ✅ Download Core JARs
+    for (String jar : coreJars) {
+        String correctedJarUrl = baseUrl + "/client-lib/" + new File(jar).getName();
+        File localFile = new File(cacheCoreDir, new File(jar).getName());
 
-            log("Downloading Core JAR: " + correctedJarUrl);
-            if (!downloadFile(correctedJarUrl, localFile, null)) {
-                log("WARNING: Failed to download core JAR: " + correctedJarUrl);
-            }
-            localJars.add(localFile);
+        log("Downloading Core JAR: " + correctedJarUrl);
+        if (!downloadFile(correctedJarUrl, localFile, null)) {
+            log("WARNING: Failed to download core JAR: " + correctedJarUrl);
         }
-
-        // ✅ Fix Extension JAR Download Path
-        for (String jar : extensionJars) {
-            String[] jarParts = jar.split("/");
-            if (jarParts.length < 2) {
-                log("WARNING: Skipping invalid extension JAR path: " + jar);
-                continue;
-            }
-            String correctedJarUrl = baseUrl + "/extensions/libs/" + jarParts[1] + "/" + jarParts[jarParts.length - 1];
-            File localFile = new File(cacheExtensionsDir, new File(jarParts[jarParts.length - 1]).getName());
-
-            log("Downloading Extension JAR: " + correctedJarUrl);
-            if (!downloadFile(correctedJarUrl, localFile, null)) {
-                log("WARNING: Missing extension JAR: " + correctedJarUrl);
-            }
-            localJars.add(localFile);
-        }
-
-        try {
-            launchMirth("com.mirth.connect.client.ui.Mirth", localJars);
-        } catch (Exception e) {
-            log("ERROR: Failed to launch Mirth - " + e.getMessage());
-        }
+        localJars.add(localFile);
     }
+
+    // ✅ Download Extension JARs into Subfolders
+    for (String jar : extensionJars) {
+        String[] jarParts = jar.split("/");
+        if (jarParts.length < 2) {
+            log("WARNING: Skipping invalid extension JAR path: " + jar);
+            continue;
+        }
+        String extensionName = jarParts[1]; // Extracts 'globalmapviewer' from 'libs/globalmapviewer/globalmapviewer-client.jar'
+        String extensionFolder = cacheExtensionsDir + "/" + extensionName; // Subfolder for each extension
+        new File(extensionFolder).mkdirs(); // Ensure the folder exists
+
+        String correctedJarUrl = baseUrl + "/extensions/libs/" + extensionName + "/" + jarParts[jarParts.length - 1];
+        File localFile = new File(extensionFolder, new File(jarParts[jarParts.length - 1]).getName());
+
+        log("Downloading Extension JAR: " + correctedJarUrl + " -> " + localFile.getAbsolutePath());
+        if (!downloadFile(correctedJarUrl, localFile, null)) {
+            log("WARNING: Missing extension JAR: " + correctedJarUrl);
+        }
+        localJars.add(localFile);
+    }
+
+    try {
+        launchMirth("com.mirth.connect.client.ui.Mirth", localJars);
+    } catch (Exception e) {
+        log("ERROR: Failed to launch Mirth - " + e.getMessage());
+    }
+}
 
     private void launchMirth(String mainClass, List<File> jarFiles) throws Exception {
         log("Launching Mirth Client...");
