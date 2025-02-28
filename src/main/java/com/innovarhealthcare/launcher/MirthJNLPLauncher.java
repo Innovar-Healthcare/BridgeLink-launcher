@@ -216,20 +216,28 @@ public class MirthJNLPLauncher extends Application {
 }
 
     private void launchMirth(String mainClass, List<File> jarFiles) throws Exception {
-        log("Launching Mirth Client...");
+        log("Launching Mirth Client in a separate process...");
 
-        List<URL> urls = new ArrayList<>();
+        List<String> classpath = new ArrayList<>();
         for (File jar : jarFiles) {
-            urls.add(jar.toURI().toURL());
+            classpath.add(jar.getAbsolutePath());
         }
 
-        URLClassLoader classLoader = new URLClassLoader(urls.toArray(new URL[0]), ClassLoader.getSystemClassLoader());
-        Thread.currentThread().setContextClassLoader(classLoader);
+        String classpathString = String.join(File.pathSeparator, classpath);
+        log("Final Classpath: " + classpathString);
 
-        Class<?> cls = classLoader.loadClass(mainClass);
-        Method mainMethod = cls.getMethod("main", String[].class);
-        String[] mirthArgs = {"https://localhost:8443", "4.5.2"};
-        mainMethod.invoke(null, (Object) mirthArgs);
+        List<String> command = new ArrayList<>();
+        command.add("java");
+        command.add("--add-opens=java.base/java.util=ALL-UNNAMED"); // Ensure reflection-based features work
+        command.add("-cp");
+        command.add(classpathString);
+        command.add(mainClass);
+
+        ProcessBuilder processBuilder = new ProcessBuilder(command);
+        processBuilder.inheritIO(); // Redirect output to console
+
+        Process process = processBuilder.start();
+        log("Mirth Client started successfully. PID: " + process.pid());
     }
 
     private void log(String message) {
