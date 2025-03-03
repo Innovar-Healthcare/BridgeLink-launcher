@@ -78,7 +78,7 @@ public class MirthJNLPLauncher extends Application {
     }
 
     private void launchMirthFromURL(String jnlpUrl) {
-        log("Fetching JNLP from: " + jnlpUrl);
+        log("🔍 Fetching main JNLP from: " + jnlpUrl);
         try {
             URL url = new URL(jnlpUrl);
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -86,134 +86,133 @@ public class MirthJNLPLauncher extends Application {
             Document doc = builder.parse(url.openStream());
 
             List<String> coreJars = new ArrayList<>();
-            List<String> extensionJars = new ArrayList<>();
             String mirthVersion = "unknown";
 
+            // Extract core JARs
             NodeList jarList = doc.getElementsByTagName("jar");
-            if (jarList.getLength() == 0) {
-                log("WARNING: No JAR files detected in JNLP!");
-            }
-
             for (int i = 0; i < jarList.getLength(); i++) {
                 Element jarElement = (Element) jarList.item(i);
-                String jarPath = jarElement.getAttribute("href");
-                log("Detected Core JAR: " + jarPath);
-                coreJars.add(jarPath);
+                coreJars.add(jarElement.getAttribute("href"));
             }
 
-            NodeList extensionList = doc.getElementsByTagName("extension");
-            for (int i = 0; i < extensionList.getLength(); i++) {
-                Element extElement = (Element) extensionList.item(i);
-                String extJnlpPath = extElement.getAttribute("href");
-
-                log("Found extension JNLP: " + extJnlpPath);
-                parseExtensionJnlp(jnlpUrl.substring(0, jnlpUrl.lastIndexOf("/")) + "/" + extJnlpPath, extensionJars);
-            }
-
+            // Detect Mirth version
             NodeList versionNodes = doc.getElementsByTagName("title");
             if (versionNodes.getLength() > 0) {
                 mirthVersion = versionNodes.item(0).getTextContent().replaceAll("[^0-9.]", "");
             }
 
-            log("Detected Mirth Version: " + mirthVersion);
-            log("Final Core JARs: " + coreJars);
+            log("✅ Detected Mirth Version: " + mirthVersion);
 
+            // Extract extension JNLPs
+            NodeList extensionNodes = doc.getElementsByTagName("extension");
+            List<String> extensionJnlpUrls = new ArrayList<>();
+
+            for (int i = 0; i < extensionNodes.getLength(); i++) {
+                Element extElement = (Element) extensionNodes.item(i);
+                String extJnlpPath = extElement.getAttribute("href");
+                String extJnlpUrl = "https://localhost:8443/" + extJnlpPath;
+                extensionJnlpUrls.add(extJnlpUrl);
+            }
+
+            log("✅ Found extension JNLPs: " + extensionJnlpUrls);
+
+            // ✅ Fetch extension JARs
+            List<String> extensionJars = new ArrayList<>();
+            for (String extJnlpUrl : extensionJnlpUrls) {
+                parseExtensionJnlp(extJnlpUrl, mirthVersion, extensionJars);
+            }
+
+            // Download & Launch Mirth
             downloadAndLaunch(jnlpUrl, coreJars, extensionJars, mirthVersion);
         } catch (Exception e) {
-            log("Error: " + e.getMessage());
+            log("❌ ERROR in launchMirthFromURL(): " + e.getMessage());
             e.printStackTrace();
         }
     }
 
-    private void parseExtensionJnlp(String extJnlpUrl, List<String> extensionJars) {
-        log("Fetching Extension JNLP: " + extJnlpUrl);
+
+    private void parseExtensionJnlp(String extJnlpUrl, String mirthVersion, List<String> extensionJars) {
+        log("🔍 Fetching Extension JNLP: " + extJnlpUrl);
         try {
             URL url = new URL(extJnlpUrl);
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             DocumentBuilder builder = factory.newDocumentBuilder();
             Document doc = builder.parse(url.openStream());
 
-            NodeList resourceList = doc.getElementsByTagName("resources");
-            if (resourceList.getLength() == 0) {
-                log("WARNING: No <resources> tag found in extension JNLP: " + extJnlpUrl);
-                return;
+            // Extract extension name from URL (e.g., pdfviewer from "https://localhost:8443/webstart/extensions/pdfviewer.jnlp")
+            String extensionName = new File(new URL(extJnlpUrl).getPath()).getName().replace(".jnlp", "");
+            String extensionFolder = "mirth-cache/" + mirthVersion + "/extensions/" + extensionName;
+            new File(extensionFolder).mkdirs();
+
+            NodeList jarList = doc.getElementsByTagName("jar");
+            for (int i = 0; i < jarList.getLength(); i++) {
+                Element jarElement = (Element) jarList.item(i);
+                String jarPath = jarElement.getAttribute("href");
+
+                // Construct full JAR URL
+                String jarUrl = "https://localhost:8443/webstart/extensions/" + jarPath;
+                File localFile = new File(extensionFolder, new File(jarPath).getName());
+
+                log("⬇️ Downloading Extension JAR: " + jarUrl + " -> " + localFile.getAbsolutePath());
+                if (downloadFile(jarUrl, localFile, null)) {
+                    extensionJars.add(localFile.getAbsolutePath());
+                } else {
+                    log("❌ WARNING: Failed to download extension JAR: " + jarUrl);
+                }
             }
 
-            for (int i = 0; i < resourceList.getLength(); i++) {
-                Element resourceElement = (Element) resourceList.item(i);
-                NodeList jarList = resourceElement.getElementsByTagName("jar");
-
-                if (jarList.getLength() == 0) {
-                    log("WARNING: No JARs found in <resources> of extension JNLP: " + extJnlpUrl);
-                }
-
-                for (int j = 0; j < jarList.getLength(); j++) {
-                    Element jarElement = (Element) jarList.item(j);
-                    String jarPath = jarElement.getAttribute("href");
-
-                    log("Found JAR in Extension JNLP: " + jarPath);
-                    extensionJars.add(jarPath);
-                }
-            }
-
-            log("Total JARs from " + extJnlpUrl + ": " + extensionJars);
+            log("✅ Extension JARs for " + extensionName + ": " + extensionJars);
         } catch (Exception e) {
-            log("Error fetching extension JNLP: " + e.getMessage());
+            log("❌ ERROR fetching extension JNLP: " + e.getMessage());
         }
     }
 
-  private void downloadAndLaunch(String jnlpUrl, List<String> coreJars, List<String> extensionJars, String mirthVersion) {
-    log("Starting download process for Mirth version: " + mirthVersion);
+    private void downloadAndLaunch(String jnlpUrl, List<String> coreJars, List<String> extensionJars, String mirthVersion) {
+        log("🚀 Starting download process for Mirth version: " + mirthVersion);
 
-    String baseUrl = jnlpUrl.contains("/webstart") ? jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9) : jnlpUrl;
-    String cacheDir = "mirth-cache/" + mirthVersion;
-    String cacheCoreDir = cacheDir + "/core";
-    String cacheExtensionsDir = cacheDir + "/extensions";
+        String baseUrl = jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9); // Ensure base URL includes `/webstart`
+        String cacheDir = "mirth-cache/" + mirthVersion;
+        String cacheCoreDir = cacheDir + "/core";
+        String cacheExtensionsDir = cacheDir + "/extensions";
 
-    // Ensure core directory exists
-    new File(cacheCoreDir).mkdirs();
+        new File(cacheCoreDir).mkdirs(); // Ensure core directory exists
 
-    List<File> localJars = new ArrayList<>();
+        List<File> localJars = new ArrayList<>();
 
-    // ✅ Download Core JARs
-    for (String jar : coreJars) {
-        String correctedJarUrl = baseUrl + "/client-lib/" + new File(jar).getName();
-        File localFile = new File(cacheCoreDir, new File(jar).getName());
+        // ✅ Download Core JARs
+        for (String jar : coreJars) {
+            String correctedJarUrl = baseUrl + "/client-lib/" + new File(jar).getName();
+            File localFile = new File(cacheCoreDir, new File(jar).getName());
 
-        log("Downloading Core JAR: " + correctedJarUrl);
-        if (!downloadFile(correctedJarUrl, localFile, null)) {
-            log("WARNING: Failed to download core JAR: " + correctedJarUrl);
+            log("⬇️ Downloading Core JAR: " + correctedJarUrl);
+            if (!downloadFile(correctedJarUrl, localFile, null)) {
+                log("❌ WARNING: Failed to download core JAR: " + correctedJarUrl);
+            }
+            localJars.add(localFile);
         }
-        localJars.add(localFile);
-    }
 
-    // ✅ Download Extension JARs into Subfolders
-    for (String jar : extensionJars) {
-        String[] jarParts = jar.split("/");
-        if (jarParts.length < 2) {
-            log("WARNING: Skipping invalid extension JAR path: " + jar);
-            continue;
+        // ✅ Download Extension JARs
+        for (String jar : extensionJars) {
+            String extensionName = new File(jar).getParentFile().getName(); // Extracts 'dicomviewer'
+            String extensionFolder = cacheExtensionsDir + "/" + extensionName;
+            new File(extensionFolder).mkdirs(); // Ensure extension folder exists
+
+            String correctedJarUrl = baseUrl + "/extensions/libs/" + extensionName + "/" + new File(jar).getName();
+            File localFile = new File(extensionFolder, new File(jar).getName());
+
+            log("⬇️ Downloading Extension JAR: " + correctedJarUrl + " -> " + localFile.getAbsolutePath());
+            if (!downloadFile(correctedJarUrl, localFile, null)) {
+                log("❌ WARNING: Missing extension JAR: " + correctedJarUrl);
+            }
+            localJars.add(localFile);
         }
-        String extensionName = jarParts[1]; // Extracts 'globalmapviewer' from 'libs/globalmapviewer/globalmapviewer-client.jar'
-        String extensionFolder = cacheExtensionsDir + "/" + extensionName; // Subfolder for each extension
-        new File(extensionFolder).mkdirs(); // Ensure the folder exists
 
-        String correctedJarUrl = baseUrl + "/extensions/libs/" + extensionName + "/" + jarParts[jarParts.length - 1];
-        File localFile = new File(extensionFolder, new File(jarParts[jarParts.length - 1]).getName());
-
-        log("Downloading Extension JAR: " + correctedJarUrl + " -> " + localFile.getAbsolutePath());
-        if (!downloadFile(correctedJarUrl, localFile, null)) {
-            log("WARNING: Missing extension JAR: " + correctedJarUrl);
+        try {
+            launchMirth("com.mirth.connect.client.ui.Mirth", localJars);
+        } catch (Exception e) {
+            log("❌ ERROR: Failed to launch Mirth - " + e.getMessage());
         }
-        localJars.add(localFile);
     }
-
-    try {
-        launchMirth("com.mirth.connect.client.ui.Mirth", localJars);
-    } catch (Exception e) {
-        log("ERROR: Failed to launch Mirth - " + e.getMessage());
-    }
-}
 
     private void launchMirth(String mainClass, List<File> jarFiles) throws Exception {
         log("Launching Mirth Client in a separate process...");
@@ -257,17 +256,15 @@ public class MirthJNLPLauncher extends Application {
 
     private boolean downloadFile(String urlStr, File destination, String expectedSha256) {
         try {
-            // Skip download if the file already exists and matches the hash
             if (destination.exists() && expectedSha256 != null) {
                 String actualSha256 = calculateSha256(destination);
                 if (expectedSha256.equalsIgnoreCase(actualSha256)) {
-                    log("Skipping already downloaded file: " + destination.getName());
+                    log("✅ Skipping already downloaded file: " + destination.getName());
                     return true;
                 }
             }
 
-            // Download the file
-            log("Downloading: " + urlStr);
+            log("⬇️ Downloading: " + urlStr);
             URL url = new URL(urlStr);
             try (InputStream in = url.openStream();
                  FileOutputStream out = new FileOutputStream(destination)) {
@@ -278,21 +275,133 @@ public class MirthJNLPLauncher extends Application {
                 }
             }
 
-            // Verify hash after download
             if (expectedSha256 != null) {
                 String actualSha256 = calculateSha256(destination);
                 if (!expectedSha256.equalsIgnoreCase(actualSha256)) {
-                    log("ERROR: SHA-256 mismatch for " + destination.getName());
+                    log("❌ ERROR: SHA-256 mismatch for " + destination.getName());
                     destination.delete();
                     return false;
                 }
             }
 
-            log("Saved: " + destination.getAbsolutePath());
+            log("✅ Saved: " + destination.getAbsolutePath());
             return true;
         } catch (Exception e) {
-            log("Error downloading file: " + urlStr + " - " + e.getMessage());
+            log("❌ ERROR downloading file: " + urlStr + " - " + e.getMessage());
             return false;
+        }
+    }
+
+    private List<String> getAllJarFiles(String baseUrl) throws IOException {
+        log("🔍 Fetching JARs under: " + baseUrl);
+        List<String> jarFiles = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new URL(baseUrl).openStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("href") && line.endsWith(".jar\"")) { // Ensure only .jar files are processed
+                    int startIndex = line.indexOf("href=\"") + 6;
+                    int endIndex = line.indexOf("\"", startIndex);
+                    if (endIndex > startIndex) {
+                        String jarName = line.substring(startIndex, endIndex);
+                        jarFiles.add(baseUrl + jarName);
+                    }
+                }
+            }
+        }
+
+        log("✅ Detected JARs: " + jarFiles);
+        return jarFiles;
+    }
+
+    private List<String> getSubdirectories(String url) throws IOException {
+        log("🔍 Fetching extension subdirectories from: " + url);
+        List<String> subDirs = new ArrayList<>();
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(new URL(url).openStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                // Ensure we are parsing only valid directory links
+                if (line.contains("href") && line.contains("/") && !line.contains("..") && !line.contains("css") && !line.contains("js")) {
+                    int startIndex = line.indexOf("href=\"") + 6;
+                    int endIndex = line.indexOf("/", startIndex);
+                    if (endIndex > startIndex) {
+                        String dirName = line.substring(startIndex, endIndex);
+
+                        // Ensure we do not capture invalid entries
+                        if (dirName.matches("^[a-zA-Z0-9-_]+$") && !subDirs.contains(dirName)) {
+                            subDirs.add(dirName);
+                        }
+                    }
+                }
+            }
+        }
+
+        log("✅ Detected subdirectories: " + subDirs);
+        return subDirs;
+    }
+
+    private List<String> downloadExtensions(String baseUrl, String mirthVersion) {
+        log("🔍 Crawling extension directories under: " + baseUrl + "/webstart/extensions/libs/");
+
+        String cacheExtensionsDir = "mirth-cache/" + mirthVersion + "/extensions";
+        new File(cacheExtensionsDir).mkdirs(); // Ensure base extensions folder exists
+
+        List<String> downloadedJars = new ArrayList<>();
+
+        try {
+            // 1️⃣ Get a list of extension directories under /webstart/extensions/libs/
+            List<String> extensionDirs = getSubdirectories(baseUrl + "/webstart/extensions/libs/");
+            log("✅ Detected extensions: " + extensionDirs);
+
+            if (extensionDirs.isEmpty()) {
+                log("❌ WARNING: No extension directories found under /webstart/extensions/libs/");
+            }
+
+            for (String extension : extensionDirs) {
+                String extensionFolder = cacheExtensionsDir + "/" + extension;
+                new File(extensionFolder).mkdirs(); // Ensure local extension folder exists
+                log("📂 Processing extension: " + extension);
+
+                // ✅ 2️⃣ Download JARs from the extension root folder
+                String extensionUrl = baseUrl + "/webstart/extensions/libs/" + extension + "/";
+                log("🔍 Fetching JARs from: " + extensionUrl);
+                List<String> extensionJars = getAllJarFiles(extensionUrl);
+                log("📄 JARs found in " + extension + ": " + extensionJars);
+
+                for (String jarUrl : extensionJars) {
+                    downloadJar(jarUrl, extensionFolder, downloadedJars);
+                }
+
+                // ✅ 3️⃣ Check if a `lib/` subfolder exists, and download JARs from there
+                String libUrl = baseUrl + "/webstart/extensions/libs/" + extension + "/lib/";
+                log("🔍 Checking for lib JARs at: " + libUrl);
+                List<String> libJars = getAllJarFiles(libUrl);
+                log("📄 JARs found in " + extension + "/lib/: " + libJars);
+
+                for (String jarUrl : libJars) {
+                    downloadJar(jarUrl, extensionFolder, downloadedJars);
+                }
+            }
+        } catch (Exception e) {
+            log("❌ ERROR in downloadExtensions(): " + e.getMessage());
+        }
+
+        log("✅ Final downloaded extensions: " + downloadedJars);
+        return downloadedJars;
+    }
+
+    private void downloadJar(String jarUrl, String extensionFolder, List<String> downloadedJars) {
+        if (!jarUrl.endsWith(".jar")) return;
+
+        String jarName = new File(jarUrl).getName();
+        File localFile = new File(extensionFolder, jarName);
+
+        log("⬇️ Downloading JAR: " + jarUrl + " -> " + localFile.getAbsolutePath());
+        if (downloadFile(jarUrl, localFile, null)) {
+            downloadedJars.add(localFile.getAbsolutePath());
+        } else {
+            log("❌ WARNING: Failed to download: " + jarUrl);
         }
     }
 
@@ -310,4 +419,8 @@ public class MirthJNLPLauncher extends Application {
         }
         return hexString.toString();
     }
+
+
+
+
 }
