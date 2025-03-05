@@ -260,7 +260,7 @@ public class MirthJNLP {
         command.add("-Xmx512m");
 //        command.add("-Djavafx.verbose=true");
 //        command.add("-Dprism.verbose=true");
-        command.add("-Djava.library.path=C:\\Program Files\\Mirth Connect Administrator Launcher\\mcadministrator\\windows-x64\\openjfx\\11");
+//        command.add("-Djava.library.path=C:\\Program Files\\Mirth Connect Administrator Launcher\\mcadministrator\\windows-x64\\openjfx\\11");
         command.add("-cp");
         command.add(classpathString);
         command.add(mainClass);
