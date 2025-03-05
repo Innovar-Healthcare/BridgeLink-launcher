@@ -24,9 +24,8 @@ public class MirthJNLPLauncher extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        String url = "https://192.168.1.100:8443/webstart.jnlp";
+        String url = "https://localhost:8443";
         urlField = new TextField(url);
-//        urlField = new TextField("https://localhost:8443/webstart.jnlp");
         Button launchButton = new Button("Launch Mirth");
         logArea = new TextArea();
         logArea.setEditable(false);
@@ -38,7 +37,7 @@ public class MirthJNLPLauncher extends Application {
             System.err.println("ERROR: Could not clear log file - " + e.getMessage());
         }
 
-        launchButton.setOnAction(e -> (new MirthJNLP()).launchMirthFromURL(urlField.getText()));
+        launchButton.setOnAction(e -> (new MirthJNLP(urlField.getText())).launchMirth());
 
         VBox root = new VBox(10, new Label("Enter JNLP URL:"), urlField, launchButton, new Label("Log:"), logArea);
         primaryStage.setScene(new Scene(root, 600, 400));

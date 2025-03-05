@@ -11,9 +11,16 @@ package com.innovarhealthcare.launcher;
 public class MainClass {
     public static void main(String[] args) {
         SSLBypass.disableSSLVerification(); 
-         
-        MirthJNLP mirth = new MirthJNLP();
-        String url = "https://192.168.1.100:8443/webstart.jnlp";
-        mirth.launchMirthFromURL(url);
+        
+        String host = "https://192.168.1.100:8443";
+        
+        MirthJNLP mirth = new MirthJNLP(host);
+        mirth.launchMirth();
+        
+//        String url = "https://192.168.1.100:8443/webstart.jnlp";
+//        String url = "https://54.175.253.162:8443/webstart.jnlp";
+        
+//        String url = "https://ngconnect-test.hibridgehie.org:8443/webstart.jnlp";
+        
     }
 }

@@ -35,9 +35,66 @@ import java.util.Map;
 public class MirthJNLP {
     private static final String LOG_FILE = "mirth-launcher-debug.log";
     private static final boolean DEBUG = false;
+    private String host = "";
     
-    public MirthJNLP(){
+    public MirthJNLP(String host){
+        this.host = host;
+    }
     
+    public void launchMirth(){
+        String jnlpUrl = host + "/" + "webstart.jnlp";
+        
+        log("🔍 Fetching main JNLP from: " + jnlpUrl);
+        try {
+            URL url = new URL(jnlpUrl);
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            Document doc = builder.parse(url.openStream());
+
+            List<String> coreJars = new ArrayList<>();
+            String mirthVersion = "unknown";
+
+            // Extract core JARs
+            NodeList jarList = doc.getElementsByTagName("jar");
+            for (int i = 0; i < jarList.getLength(); i++) {
+                Element jarElement = (Element) jarList.item(i);
+                coreJars.add(jarElement.getAttribute("href"));
+            }
+
+            // Detect Mirth version
+            NodeList versionNodes = doc.getElementsByTagName("title");
+            if (versionNodes.getLength() > 0) {
+                mirthVersion = versionNodes.item(0).getTextContent().replaceAll("[^0-9.]", "");
+            }
+
+            log("✅ Detected Mirth Version: " + mirthVersion);
+
+            // Extract extension JNLPs
+            NodeList extensionNodes = doc.getElementsByTagName("extension");
+            List<String> extensionJnlpUrls = new ArrayList<>();
+
+            String Url = jnlpUrl.replace("webstart.jnlp", "");
+            for (int i = 0; i < extensionNodes.getLength(); i++) {
+                Element extElement = (Element) extensionNodes.item(i);
+                String extJnlpPath = extElement.getAttribute("href");
+                String extJnlpUrl = Url + extJnlpPath;
+                extensionJnlpUrls.add(extJnlpUrl);
+            }
+
+            log("✅ Found extension JNLPs: " + extensionJnlpUrls);
+
+            // ✅ Fetch extension JARs
+            List<ExtensionInfo> listExtensions = new ArrayList<>(); 
+            for (String extJnlpUrl : extensionJnlpUrls) {
+                listExtensions.add(parseExtensionJnlp(extJnlpUrl, mirthVersion));
+            }
+
+            // Download & Launch Mirth
+            downloadAndLaunch(jnlpUrl, coreJars, mirthVersion, listExtensions);
+        } catch (Exception e) {
+            log("❌ ERROR in launchMirthFromURL(): " + e.getMessage());
+            e.printStackTrace();
+        }
     }
     
     public void launchMirthFromURL(String jnlpUrl) {
@@ -70,10 +127,11 @@ public class MirthJNLP {
             NodeList extensionNodes = doc.getElementsByTagName("extension");
             List<String> extensionJnlpUrls = new ArrayList<>();
 
+            String Url = jnlpUrl.replace("webstart.jnlp", "");
             for (int i = 0; i < extensionNodes.getLength(); i++) {
                 Element extElement = (Element) extensionNodes.item(i);
                 String extJnlpPath = extElement.getAttribute("href");
-                String extJnlpUrl = "https://localhost:8443/" + extJnlpPath;
+                String extJnlpUrl = Url + extJnlpPath;
                 extensionJnlpUrls.add(extJnlpUrl);
             }
 
@@ -82,12 +140,6 @@ public class MirthJNLP {
             // ✅ Fetch extension JARs
             List<ExtensionInfo> listExtensions = new ArrayList<>(); 
             for (String extJnlpUrl : extensionJnlpUrls) {
-                if(DEBUG){
-                    if("https://localhost:8443/webstart/extensions/innovarhealthcare-channel-history.jnlp".equals(extJnlpUrl)){
-                        continue;
-                    }
-                }
-                
                 listExtensions.add(parseExtensionJnlp(extJnlpUrl, mirthVersion));
             }
 
@@ -119,10 +171,9 @@ public class MirthJNLP {
             
             NodeList jarList = doc.getElementsByTagName("jar");
             for (int i = 0; i < jarList.getLength(); i++) {
-                
                 Element jarElement = (Element) jarList.item(i);
                 String jarPath = jarElement.getAttribute("href");
-                String jarUrl = "https://localhost:8443/webstart/extensions/" + jarPath;
+                String jarUrl = this.host + "/webstart/extensions/" + jarPath;
                 mapJars.put(jarUrl, new File(jarPath).getName());
             }
             
@@ -167,6 +218,11 @@ public class MirthJNLP {
             String extensionFolder = cacheExtensionsDir + "/" + extensionName;
             Map<String, String> mapJars = jar.getMapJars();
             
+            if(mapJars == null){
+                log("❌ WARNING: Failed to download Extension JAR: mapJars is null - extensionName: " + extensionName);
+                continue;
+            }
+            
             for (Map.Entry<String, String> entry : mapJars.entrySet()) {
                 String jarUrl = entry.getKey();
                 String jarName = entry.getValue();
@@ -201,10 +257,15 @@ public class MirthJNLP {
         List<String> command = new ArrayList<>();
         command.add("java");
         command.add("--add-opens=java.base/java.util=ALL-UNNAMED"); // Ensure reflection-based features work
+        command.add("-Xmx512m");
+//        command.add("-Djavafx.verbose=true");
+//        command.add("-Dprism.verbose=true");
+        command.add("-Djava.library.path=C:\\Program Files\\Mirth Connect Administrator Launcher\\mcadministrator\\windows-x64\\openjfx\\11");
         command.add("-cp");
         command.add(classpathString);
         command.add(mainClass);
-
+        command.add(host);
+        
         ProcessBuilder processBuilder = new ProcessBuilder(command);
         processBuilder.inheritIO(); // Redirect output to console
 
