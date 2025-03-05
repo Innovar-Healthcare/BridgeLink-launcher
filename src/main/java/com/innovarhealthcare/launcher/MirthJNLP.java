@@ -97,61 +97,6 @@ public class MirthJNLP {
         }
     }
     
-    public void launchMirthFromURL(String jnlpUrl) {
-        log("🔍 Fetching main JNLP from: " + jnlpUrl);
-        try {
-            URL url = new URL(jnlpUrl);
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder = factory.newDocumentBuilder();
-            Document doc = builder.parse(url.openStream());
-
-            List<String> coreJars = new ArrayList<>();
-            String mirthVersion = "unknown";
-
-            // Extract core JARs
-            NodeList jarList = doc.getElementsByTagName("jar");
-            for (int i = 0; i < jarList.getLength(); i++) {
-                Element jarElement = (Element) jarList.item(i);
-                coreJars.add(jarElement.getAttribute("href"));
-            }
-
-            // Detect Mirth version
-            NodeList versionNodes = doc.getElementsByTagName("title");
-            if (versionNodes.getLength() > 0) {
-                mirthVersion = versionNodes.item(0).getTextContent().replaceAll("[^0-9.]", "");
-            }
-
-            log("✅ Detected Mirth Version: " + mirthVersion);
-
-            // Extract extension JNLPs
-            NodeList extensionNodes = doc.getElementsByTagName("extension");
-            List<String> extensionJnlpUrls = new ArrayList<>();
-
-            String Url = jnlpUrl.replace("webstart.jnlp", "");
-            for (int i = 0; i < extensionNodes.getLength(); i++) {
-                Element extElement = (Element) extensionNodes.item(i);
-                String extJnlpPath = extElement.getAttribute("href");
-                String extJnlpUrl = Url + extJnlpPath;
-                extensionJnlpUrls.add(extJnlpUrl);
-            }
-
-            log("✅ Found extension JNLPs: " + extensionJnlpUrls);
-
-            // ✅ Fetch extension JARs
-            List<ExtensionInfo> listExtensions = new ArrayList<>(); 
-            for (String extJnlpUrl : extensionJnlpUrls) {
-                listExtensions.add(parseExtensionJnlp(extJnlpUrl, mirthVersion));
-            }
-
-            // Download & Launch Mirth
-            downloadAndLaunch(jnlpUrl, coreJars, mirthVersion, listExtensions);
-        } catch (Exception e) {
-            log("❌ ERROR in launchMirthFromURL(): " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-
     private ExtensionInfo parseExtensionJnlp(String extJnlpUrl, String mirthVersion) {
         log("🔍 Fetching Extension JNLP: " + extJnlpUrl);
         

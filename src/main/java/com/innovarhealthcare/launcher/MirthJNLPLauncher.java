@@ -39,7 +39,7 @@ public class MirthJNLPLauncher extends Application {
 
         launchButton.setOnAction(e -> (new MirthJNLP(urlField.getText())).launchMirth());
 
-        VBox root = new VBox(10, new Label("Enter JNLP URL:"), urlField, launchButton, new Label("Log:"), logArea);
+        VBox root = new VBox(10, new Label("Enter MC Host:"), urlField, launchButton, new Label("Log:"), logArea);
         primaryStage.setScene(new Scene(root, 600, 400));
         primaryStage.setTitle("Mirth JNLP Launcher");
         primaryStage.show();
