@@ -35,13 +35,13 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private Button launchButton;
     private Label javaHomeLabel;
     private RadioButton bundledJavaRadio;
-    private ComboBox<D> bundledJavaCombo;
+    private ComboBox<BundledJava> bundledJavaCombo;
     private RadioButton defaultJavaRadio;
     private RadioButton customJavaRadio;
     private TextField customJavaTextField;
     private Label heapSizeLabel;
     private TextField heapSizeTextField;
-    private ComboBox<E> heapSizeCombo;
+    private ComboBox<HeapMemory> heapSizeCombo;
     private Label consoleLabel;
     private RadioButton consoleYesRadio;
     private RadioButton consoleNoRadio;
@@ -58,37 +58,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private Thread launchThread;
     private volatile boolean isLaunching = false;
     private Stage primaryStage;
-
-
-    // Required supporting classes (minimal versions)
-    static class Connection {
-        private String name;
-
-        public Connection(String name) {
-            this.name = name;
-        }
-
-        public String getName() { return name; }
-    }
-
-    static class D {
-        private String version;
-        public D(String path, String version) { this.version = version; }
-        @Override public String toString() { return version; }
-    }
-
-    static class E {
-        private String value;
-        private String display;
-        public E(String value, String display) {
-            this.value = value;
-            this.display = display;
-        }
-        public String getValue() { return value; }
-        public String getDisplay() { return display; }
-
-        @Override public String toString() { return display; }
-    }
 
     @Override
     public void start(Stage stage) {
@@ -142,8 +111,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
         gridPane.add(this.javaHomeLabel, 0, row);
 
         this.bundledJavaCombo = new ComboBox<>(FXCollections.observableArrayList(
-            new D("", "Java 17"),
-            new D("", "Java 8")
+            new BundledJava("", "Java 17"),
+            new BundledJava("", "Java 8")
         ));
 
         this.bundledJavaCombo.getSelectionModel().select(0);
@@ -154,11 +123,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
         gridPane.add(this.heapSizeLabel, 0, row);
 
         this.heapSizeCombo = new ComboBox<>(FXCollections.observableArrayList(
-            new E("256m", "256 MB"),
-            new E("512m", "512 MB"),
-            new E("1g", "1 GB"),
-            new E("2g", "2 GB"),
-            new E("4g", "4 GB")
+            new HeapMemory("256m", "256 MB"),
+            new HeapMemory("512m", "512 MB"),
+            new HeapMemory("1g", "1 GB"),
+            new HeapMemory("2g", "2 GB"),
+            new HeapMemory("4g", "4 GB")
         ));
         this.heapSizeCombo.getSelectionModel().select(1);
         gridPane.add(this.heapSizeCombo, 1, row++, 3, 1);
