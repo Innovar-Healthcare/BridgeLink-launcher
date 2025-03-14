@@ -1,4 +1,7 @@
 package com.innovarhealthcare.launcher;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.innovarhealthcare.launcher.interfaces.Progress;
 
 import javafx.application.Application;
@@ -7,14 +10,19 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.UUID;
+
 import javafx.application.Application;
 import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -25,22 +33,27 @@ import javafx.scene.layout.*;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.util.Callback;
-
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
+//import org.apache.logging.log4j.LogManager;
+//import org.apache.logging.log4j.Logger;
 
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final String VERSION = "1.0.0";
+
+//    private static final Logger logger = LogManager.getLogger(MirthClientLauncher.class);
+    private final ObservableList<Connection> connectionsList = FXCollections.observableArrayList();
+
+
     private TableView<Connection> connectionsTableView;
+    private TableView.TableViewSelectionModel<Connection> tableSelectionModel;
+
     private Label addressLabel;
     private TextField addressTextField;
     private Button launchButton;
     private Label javaHomeLabel;
-    private RadioButton bundledJavaRadio;
     private ComboBox<BundledJava> bundledJavaCombo;
-    private RadioButton defaultJavaRadio;
-    private RadioButton customJavaRadio;
-    private TextField customJavaTextField;
     private Label heapSizeLabel;
-    private TextField heapSizeTextField;
     private ComboBox<HeapMemory> heapSizeCombo;
     private Label consoleLabel;
     private RadioButton consoleYesRadio;
@@ -59,6 +72,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private volatile boolean isLaunching = false;
     private Stage primaryStage;
 
+
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
@@ -74,14 +88,82 @@ public class BridgeLinkLauncher extends Application implements Progress {
         splitPane.setDividerPositions(0.3);
         root.setCenter(splitPane);
 
+//        // Connections TableView
+//        this.connectionsTableView = new TableView<>();
+//        this.connectionsTableView.setPlaceholder(new Label("No saved connections"));
+//
+//        TableColumn<Connection, String> nameColumn = new TableColumn<>("Connections");
+//        nameColumn.setCellValueFactory(param -> new javafx.beans.property.SimpleStringProperty(param.getValue().getName()));
+//        this.connectionsTableView.getColumns().add(nameColumn);
+//
+//        splitPane.getItems().add(this.connectionsTableView);
+
         // Connections TableView
         this.connectionsTableView = new TableView<>();
         this.connectionsTableView.setPlaceholder(new Label("No saved connections"));
+        this.connectionsTableView.setEditable(true);
+
+        TableColumn<Connection, String> iconColumn = new TableColumn<>("");
+        iconColumn.setCellFactory(col -> new TableCell<Connection, String>() {
+            private final ImageView imageView = new ImageView();
+            @Override
+            protected void updateItem(String iconName, boolean empty) {
+                super.updateItem(iconName, empty);
+                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                } else {
+                    imageView.setImage(getIconImage(iconName));
+                    imageView.setFitHeight(20);
+                    imageView.setFitWidth(20);
+                    setGraphic(imageView);
+                }
+            }
+        });
+
+        iconColumn.setCellValueFactory((Callback) new PropertyValueFactory<>("icon"));
+        iconColumn.setMinWidth(26.0);
+        iconColumn.setMaxWidth(26.0);
+        this.connectionsTableView.getColumns().add(iconColumn);
 
         TableColumn<Connection, String> nameColumn = new TableColumn<>("Connections");
-        nameColumn.setCellValueFactory(param -> new javafx.beans.property.SimpleStringProperty(param.getValue().getName()));
+        nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
+        nameColumn.setCellFactory(TextFieldTableCell.forTableColumn());
+        nameColumn.setOnEditCommit(event -> {
+            String newName = StringUtils.trim(event.getNewValue());
+            boolean exists = false;
+            for (Connection conn : connectionsList) {
+                if (!StringUtils.equals(conn.getId(), event.getRowValue().getId()) &&
+                        StringUtils.equalsIgnoreCase(conn.getName(), newName)) {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists) event.getRowValue().setName(newName);
+            this.connectionsTableView.refresh();
+            saveConnections();
+        });
         this.connectionsTableView.getColumns().add(nameColumn);
 
+        // Add other columns (hidden)
+        TableColumn<Connection, String> idColumn = new TableColumn<>("Id");
+        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
+        idColumn.setVisible(false);
+        this.connectionsTableView.getColumns().add(idColumn);
+
+        this.connectionsList.addAll(loadConnections());
+        this.connectionsTableView.setItems(this.connectionsList);
+        this.connectionsTableView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal != null) {
+                this.addressTextField.setText(newVal.getAddress());
+                updateUIFromConnection(newVal);
+            }
+            this.saveButton.setDisable(true);
+            this.deleteButton.setDisable(newVal == null);
+        });
+
+        this.tableSelectionModel = this.connectionsTableView.getSelectionModel();
+        this.tableSelectionModel.setSelectionMode(SelectionMode.SINGLE);
+        this.connectionsTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
         splitPane.getItems().add(this.connectionsTableView);
 
         // Configuration GridPane
@@ -99,6 +181,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
         this.addressTextField = new TextField("https://localhost:8443");
         this.addressTextField.setPrefWidth(388.0);
+        this.addressTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
         gridPane.add(this.addressTextField, 1, row);
 
         this.launchButton = new Button("Launch");
@@ -116,6 +199,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         ));
 
         this.bundledJavaCombo.getSelectionModel().select(0);
+        this.bundledJavaCombo.setOnAction(event -> updateSaveButtonState());
         gridPane.add(this.bundledJavaCombo, 1, row++, 3, 1);
 
         // Max Heap Size
@@ -130,6 +214,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             new HeapMemory("4g", "4 GB")
         ));
         this.heapSizeCombo.getSelectionModel().select(1);
+        this.heapSizeCombo.setOnAction(event -> updateSaveButtonState());
         gridPane.add(this.heapSizeCombo, 1, row++, 3, 1);
 
         // Show Java Console
@@ -139,10 +224,12 @@ public class BridgeLinkLauncher extends Application implements Progress {
         ToggleGroup consoleGroup = new ToggleGroup();
         this.consoleYesRadio = new RadioButton("Yes");
         this.consoleYesRadio.setToggleGroup(consoleGroup);
+        this.consoleYesRadio.setOnAction(event -> updateSaveButtonState());
 
         this.consoleNoRadio = new RadioButton("No");
         this.consoleNoRadio.setToggleGroup(consoleGroup);
         this.consoleNoRadio.setSelected(true);
+        this.consoleNoRadio.setOnAction(event -> updateSaveButtonState());
 
         HBox consoleBox = new HBox(10, this.consoleYesRadio, this.consoleNoRadio);
         gridPane.add(consoleBox, 1, row++, 3, 1);
@@ -173,11 +260,71 @@ public class BridgeLinkLauncher extends Application implements Progress {
         // Bottom Buttons
         this.closeWindowCheckBox = new CheckBox("Close this window after launching");
 
+
         this.newButton = new Button("New");
+        this.newButton.setOnAction(event -> {
+            if (!isLaunching) {
+                String newName = "New Connection";
+                int counter = 1;
+                while (nameExists(newName)) {
+                    newName = "New Connection " + counter++;
+                }
+
+                TextInputDialog dialog = new TextInputDialog(newName);
+                dialog.setTitle("New Connection");
+                dialog.setHeaderText("Enter a name for this connection:");
+                dialog.initOwner(stage);
+                dialog.showAndWait().ifPresent(name -> {
+                    if (StringUtils.isNotBlank(name)) {
+                        String finalName = name;
+                        int cnt = 1;
+                        while (nameExists(finalName)) {
+                            finalName = name + " Copy " + cnt++;
+                        }
+                        addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false);
+                    }
+                });
+            }
+        });
         this.saveButton = new Button("Save");
+        this.saveButton.setOnAction(event -> {
+            if (!isLaunching) {
+                Connection selected = this.connectionsTableView.getSelectionModel().getSelectedItem();
+                if (selected != null) {
+                    updateConnectionFromUI(selected);
+                    this.connectionsTableView.refresh();
+                    this.saveButton.setDisable(true);
+                    saveConnections();
+                }
+            }
+        });
         this.saveAsButton = new Button("Save As...");
         this.deleteButton = new Button("Delete");
-
+        this.deleteButton.setDisable(true);
+        this.deleteButton.setOnAction(event -> {
+            if (!isLaunching) {
+                Connection selected = this.connectionsTableView.getSelectionModel().getSelectedItem();
+                if (selected != null) {
+                    int index = this.connectionsTableView.getSelectionModel().getSelectedIndex();
+                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                    alert.setTitle("Delete Connection");
+                    alert.setHeaderText("Are you sure to delete this connection?");
+                    alert.initOwner(primaryStage);
+                    alert.showAndWait().ifPresent(response -> {
+                        if (response == ButtonType.OK) {
+                            this.connectionsList.remove(selected);
+                            this.connectionsTableView.refresh();
+                            saveConnections();
+                            if (index < this.connectionsList.size()) {
+                                this.tableSelectionModel.select(index);
+                            } else if (!this.connectionsList.isEmpty()) {
+                                this.tableSelectionModel.select(this.connectionsList.size() - 1);
+                            }
+                        }
+                    });
+                }
+            }
+        });
         HBox bottomLeft = new HBox(this.closeWindowCheckBox);
         bottomLeft.setAlignment(Pos.BOTTOM_LEFT);
         HBox bottomRight = new HBox(10, this.newButton, this.saveButton, this.saveAsButton, this.deleteButton);
@@ -298,6 +445,132 @@ public class BridgeLinkLauncher extends Application implements Progress {
         progressIndicator.setVisible(visible);
         progressText.setVisible(visible);
         cancelButton.setVisible(visible);
+    }
+
+    private boolean nameExists(String name) {
+        return this.connectionsList.stream().anyMatch(conn -> StringUtils.equalsIgnoreCase(name, conn.getName()));
+    }
+
+    private String getJavaHome() {
+        return "BUNDLED";
+    }
+
+    private List<Connection> loadConnections() {
+        List<Connection> connections = new ArrayList<>();
+        File connectionsFile = new File("data/connections.json");
+        if (connectionsFile.exists()) {
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                connections = objectMapper.readValue(connectionsFile, new TypeReference<List<Connection>>() {});
+            } catch (IOException e) {
+                System.out.println("Unable to load connections from file. Error: " + e.getMessage());
+//                showAlert("Error", "Unable to load connections from file. Error: " + e.getMessage());
+            }
+        }
+        return connections;
+    }
+
+    private void saveConnections() {
+        File directory = new File("data");
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+
+        File connectionsFile = new File("data/connections.json");
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            objectMapper.writeValue(connectionsFile, this.connectionsList);
+        } catch (IOException e) {
+            showAlert(e.getMessage());
+        }
+    }
+
+    private void addConnection(String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
+                               String heapSize, String icon, boolean showJavaConsole, String sslProtocols,
+                               boolean sslProtocolsCustom, String sslCipherSuites, boolean useLegacyDHSettings) {
+        Connection conn = new Connection(UUID.randomUUID().toString(), name, address, javaHome, javaHomeBundledValue,
+                javaFxHome, heapSize, icon, showJavaConsole, sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings);
+
+        this.connectionsList.add(conn);
+        this.connectionsTableView.refresh();
+
+        saveConnections();
+
+        this.tableSelectionModel.select(conn);
+        this.saveButton.setDisable(true);
+    }
+
+    private Image getIconImage(String iconName) {
+        return new Image(getClass().getResourceAsStream("/images/launcher_32.png"), 20, 20, true, true);
+
+//        try {
+//            return new Image(getClass().getResourceAsStream("/images/" + iconName), 20, 20, true, true);
+//        } catch (Exception e) {
+//            return new Image(getClass().getResourceAsStream("/images/launcher_32.png"), 20, 20, true, true);
+//        }
+    }
+
+    private void updateUIFromConnection(Connection conn) {
+        addressTextField.setText(conn.getAddress());
+        bundledJavaCombo.getSelectionModel().select(new BundledJava("", conn.getJavaHomeBundledValue()));
+
+        if (conn.isShowJavaConsole()) {
+            consoleYesRadio.setSelected(true);
+        } else {
+            consoleNoRadio.setSelected(true);
+        }
+
+        String heapSize = conn.getHeapSize();
+        for (HeapMemory e : this.heapSizeCombo.getItems()) {
+            if (StringUtils.equalsIgnoreCase(e.getValue(), heapSize)) {
+                this.heapSizeCombo.getSelectionModel().select(e);
+                break;
+            }
+        }
+    }
+
+    private void updateConnectionFromUI(Connection conn) {
+        conn.setAddress(this.addressTextField.getText());
+        conn.setJavaHome(getJavaHome());
+        conn.setJavaHomeBundledValue(this.bundledJavaCombo.getValue().toString());
+        conn.setJavaFxHome("");
+        conn.setHeapSize(this.heapSizeCombo.getValue().toString());
+        conn.setIcon("");
+        conn.setShowJavaConsole(this.consoleYesRadio.isSelected());
+        conn.setSslProtocolsCustom(false);
+        conn.setSslProtocols("");
+        conn.setSslCipherSuitesCustom(false);
+        conn.setSslCipherSuites("");
+        conn.setUseLegacyDHSettings(false);
+    }
+
+    private void updateSaveButtonState() {
+        if (isLaunching) {
+            this.saveButton.setDisable(true);
+            return;
+        }
+        Connection selected = this.connectionsTableView.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            this.saveButton.setDisable(true);
+            return;
+        }
+
+        boolean unchanged =
+                StringUtils.equals(selected.getAddress(), this.addressTextField.getText()) &&
+                        StringUtils.equals(selected.getJavaHome(), getJavaHome()) &&
+                        StringUtils.equals(selected.getJavaHomeBundledValue(), this.bundledJavaCombo.getValue().toString()) &&
+                        StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
+                        selected.isShowJavaConsole() == this.consoleYesRadio.isSelected() ;
+
+        this.saveButton.setDisable(unchanged);
+    }
+
+    public void showAlert(String err){
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Error");
+        alert.setHeaderText(err);
+        alert.initOwner(primaryStage);
+        alert.showAndWait();
     }
 
     @Override
