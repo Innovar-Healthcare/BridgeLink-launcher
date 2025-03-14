@@ -299,6 +299,49 @@ public class BridgeLinkLauncher extends Application implements Progress {
             }
         });
         this.saveAsButton = new Button("Save As...");
+        this.saveAsButton.setOnAction(event -> {
+            if (!isLaunching) {
+                String address = this.addressTextField.getText();
+                String javaHome = getJavaHome();
+                String javaHomeBundledValue = this.bundledJavaCombo.getValue().toString();
+                String javaFxHome = "";
+                String heapSize = "";
+                String icon = "";
+                boolean showConsole = this.consoleYesRadio.isSelected();
+                boolean sslProtocolsCustom = false;
+                String sslProtocols = "";
+                boolean sslCipherSuitesCustom = false;
+                String sslCipherSuites = "";
+                boolean useLegacyDH = false;
+
+                String newName = "New Connection";
+                int counter = 1;
+                while (nameExists(newName)) {
+                    newName = "New Connection " + counter++;
+                }
+
+                TextInputDialog dialog = new TextInputDialog(newName);
+                dialog.setTitle("Save Connection");
+                dialog.setHeaderText("Enter a name for this connection:");
+                dialog.initOwner(primaryStage);
+                dialog.showAndWait().ifPresent(name -> {
+                    if (StringUtils.isNotBlank(name)) {
+                        String finalName = name;
+                        int cnt = 1;
+                        while (nameExists(finalName)) {
+                            finalName = name + " Copy " + cnt++;
+                        }
+                        Connection newConn = new Connection(UUID.randomUUID().toString(), finalName, address, javaHome, javaHomeBundledValue,
+                                javaFxHome, heapSize, icon, showConsole, sslProtocolsCustom, sslProtocols, sslCipherSuitesCustom, sslCipherSuites, useLegacyDH);
+                        this.connectionsList.add(newConn);
+                        this.connectionsTableView.refresh();
+                        saveConnections();
+                        this.tableSelectionModel.select(newConn);
+                    }
+                });
+            }
+        });
+
         this.deleteButton = new Button("Delete");
         this.deleteButton.setDisable(true);
         this.deleteButton.setOnAction(event -> {
