@@ -29,15 +29,15 @@ import java.util.Map;
  */
 public class DownloadJNLP {
     private static final String LOG_FILE = "bridge-link-launcher-debug.log";
-    private static final boolean DEBUG = false;
-    private static final String CACHED_FOLDER = "bridge-link-cache";
+    private static final boolean DEBUG = true;
+    private static final String CACHED_FOLDER = "cache";
     private String host = "";
 
     public DownloadJNLP(String host) {
         this.host = host;
     }
 
-    public List<File> handle(Progress progress) {
+    public CodeBase handle(Progress progress) {
         progress.updateProgressText("Requesting main JNLP...");
 
         String jnlpUrl = host + "/" + "webstart.jnlp";
@@ -96,10 +96,17 @@ public class DownloadJNLP {
             localJars = download(jnlpUrl, coreJars, bridgeVersion, listExtensions, progress);
         } catch (Exception e) {
             log("❌ ERROR in handle(): " + e.getMessage());
+            progress.updateProgressText("Failed to requesting main JNLP. Address: " + jnlpUrl);
+
             e.printStackTrace();
         }
 
-        return localJars;
+        List<String> classpath = new ArrayList<>();
+        for (File jar : localJars) {
+            classpath.add(jar.getAbsolutePath());
+        }
+
+        return new CodeBase(classpath,"com.mirth.connect.client.ui.Mirth", host);
     }
 
     private ExtensionInfo parseExtensionJnlp(String extJnlpUrl, String bridgeVersion) {
@@ -141,7 +148,7 @@ public class DownloadJNLP {
         log("🚀 Starting download process for BridgeLink version: " + bridgeVersion);
 
         String baseUrl = jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9); // Ensure base URL includes `/webstart`
-        String cacheDir = "bridge-link-cache/" + bridgeVersion;
+        String cacheDir = CACHED_FOLDER +"/" + bridgeVersion;
         String cacheCoreDir = cacheDir + "/core";
         String cacheExtensionsDir = cacheDir + "/extensions";
 
@@ -191,8 +198,6 @@ public class DownloadJNLP {
 
                 progress.updateProgressText("Downloading JARs for extension " + jarName + "...");
                 log("⬇️ Downloading Extension JAR: " + jarUrl + " -> " + localFile.getAbsolutePath());
-
-
 
                 if (!downloadFile(jarUrl, localFile, null)) {
                     log("❌ WARNING: Missing extension JAR: " + jarUrl);

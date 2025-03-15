@@ -405,26 +405,14 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 String host = addressTextField.getText();
                 DownloadJNLP download = new DownloadJNLP(host);
 
-                List<File> jarFiles  = download.handle(this);
-                updateProgressText("Done downloading......");
+                JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
+                CodeBase codeBase = download.handle(this);
 
-                List<String> classpath = new ArrayList<>();
-                for (File jar : jarFiles) {
-                    classpath.add(jar.getAbsolutePath());
-                }
-                String classpathString = String.join(File.pathSeparator, classpath);
-                String mainClass = "com.mirth.connect.client.ui.Mirth";
-                List<String> command = new ArrayList<>();
-                command.add("java");
-                command.add("-Xmx512m");
-                command.add("-cp");
-                command.add(classpathString);
-                command.add(mainClass);
-                command.add(host);
-                ProcessBuilder processBuilder = new ProcessBuilder(command);
-                processBuilder.inheritIO(); // Redirect output to console
+                updateProgressText("Launching......");
 
-                Process process = processBuilder.start();
+                ProcessLauncher process = new ProcessLauncher();
+                process.launch(javaConfig, codeBase);
+
                 Thread.sleep(5000);
 
                 Platform.runLater(() -> {
@@ -614,6 +602,20 @@ public class BridgeLinkLauncher extends Application implements Progress {
         alert.setHeaderText(err);
         alert.initOwner(primaryStage);
         alert.showAndWait();
+    }
+
+    private void showErrorDialog(Throwable t, String header) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Error");
+        alert.setHeaderText(header);
+        alert.setResizable(true);
+        alert.setHeight(550.0);
+        alert.setWidth(550.0);
+        TextArea textArea = new TextArea(ExceptionUtils.getStackTrace(t));
+        textArea.setEditable(false);
+        alert.getDialogPane().setContent(textArea);
+        alert.initOwner(this.primaryStage);
+        alert.show();
     }
 
     @Override
