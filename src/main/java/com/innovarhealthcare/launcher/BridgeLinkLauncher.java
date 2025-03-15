@@ -40,10 +40,9 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final String VERSION = "1.0.0";
+    private static final Image ICON_DEFAULT = new Image("/images/launcher_32.png");
 
-//    private static final Logger logger = LogManager.getLogger(MirthClientLauncher.class);
     private final ObservableList<Connection> connectionsList = FXCollections.observableArrayList();
-
 
     private TableView<Connection> connectionsTableView;
     private TableView.TableViewSelectionModel<Connection> tableSelectionModel;
@@ -56,8 +55,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private Label heapSizeLabel;
     private ComboBox<HeapMemory> heapSizeCombo;
     private Label consoleLabel;
-    private RadioButton consoleYesRadio;
-    private RadioButton consoleNoRadio;
+    private CheckBox showConsoleCheckBox;
     private Separator separator2;
     private Text progressText;
     private ProgressBar progressBar;
@@ -83,25 +81,29 @@ public class BridgeLinkLauncher extends Application implements Progress {
             // Handle icon loading failure
         }
 
-        BorderPane root = new BorderPane();
-        SplitPane splitPane = new SplitPane();
-        splitPane.setDividerPositions(0.3);
-        root.setCenter(splitPane);
+        VBox root = new VBox(15);
+        root.setPadding(new Insets(15));
 
-//        // Connections TableView
-//        this.connectionsTableView = new TableView<>();
-//        this.connectionsTableView.setPlaceholder(new Label("No saved connections"));
-//
-//        TableColumn<Connection, String> nameColumn = new TableColumn<>("Connections");
-//        nameColumn.setCellValueFactory(param -> new javafx.beans.property.SimpleStringProperty(param.getValue().getName()));
-//        this.connectionsTableView.getColumns().add(nameColumn);
-//
-//        splitPane.getItems().add(this.connectionsTableView);
+        // Connections Section with Buttons (unchanged)
+        VBox connectionsSection = new VBox(20);
+        connectionsSection.setPadding(new Insets(10));
+        HBox tableButtons = new HBox(10);
+        newButton = new Button("New");
+        newButton.setOnAction(e -> createNewConnection());
+        saveButton = new Button("Save");
+        saveButton.setOnAction(e -> saveCurrentConnection());
+        saveAsButton = new Button("Save As...");
+        saveAsButton.setOnAction(e -> saveAsNewConnection());
+        deleteButton = new Button("Delete");
+        deleteButton.setDisable(true);
+        deleteButton.setOnAction(e -> deleteCurrentConnection());
+        tableButtons.getChildren().addAll(newButton, saveButton, saveAsButton, deleteButton);
+        tableButtons.setAlignment(Pos.CENTER);
 
-        // Connections TableView
-        this.connectionsTableView = new TableView<>();
-        this.connectionsTableView.setPlaceholder(new Label("No saved connections"));
-        this.connectionsTableView.setEditable(true);
+        connectionsTableView = new TableView<>();
+        connectionsTableView.setPlaceholder(new Label("No saved connections"));
+        connectionsTableView.setEditable(true);
+        VBox.setVgrow(connectionsTableView, Priority.ALWAYS);
 
         TableColumn<Connection, String> iconColumn = new TableColumn<>("");
         iconColumn.setCellFactory(col -> new TableCell<Connection, String>() {
@@ -119,276 +121,219 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 }
             }
         });
-
-        iconColumn.setCellValueFactory((Callback) new PropertyValueFactory<>("icon"));
+        iconColumn.setCellValueFactory(new PropertyValueFactory<>("icon"));
         iconColumn.setMinWidth(26.0);
         iconColumn.setMaxWidth(26.0);
-        this.connectionsTableView.getColumns().add(iconColumn);
 
         TableColumn<Connection, String> nameColumn = new TableColumn<>("Connections");
         nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
         nameColumn.setCellFactory(TextFieldTableCell.forTableColumn());
         nameColumn.setOnEditCommit(event -> {
             String newName = StringUtils.trim(event.getNewValue());
-            boolean exists = false;
-            for (Connection conn : connectionsList) {
-                if (!StringUtils.equals(conn.getId(), event.getRowValue().getId()) &&
-                        StringUtils.equalsIgnoreCase(conn.getName(), newName)) {
-                    exists = true;
-                    break;
-                }
-            }
+            boolean exists = connectionsList.stream().anyMatch(conn ->
+                    !StringUtils.equals(conn.getId(), event.getRowValue().getId()) &&
+                            StringUtils.equalsIgnoreCase(conn.getName(), newName));
             if (!exists) event.getRowValue().setName(newName);
-            this.connectionsTableView.refresh();
+            connectionsTableView.refresh();
             saveConnections();
         });
-        this.connectionsTableView.getColumns().add(nameColumn);
 
-        // Add other columns (hidden)
         TableColumn<Connection, String> idColumn = new TableColumn<>("Id");
         idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
         idColumn.setVisible(false);
-        this.connectionsTableView.getColumns().add(idColumn);
 
-        this.connectionsList.addAll(loadConnections());
-        this.connectionsTableView.setItems(this.connectionsList);
-        this.connectionsTableView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+        connectionsTableView.getColumns().addAll(iconColumn, nameColumn, idColumn);
+        connectionsList.addAll(loadConnections());
+        connectionsTableView.setItems(connectionsList);
+        connectionsTableView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal != null) {
-                this.addressTextField.setText(newVal.getAddress());
+                addressTextField.setText(newVal.getAddress());
                 updateUIFromConnection(newVal);
             }
-            this.saveButton.setDisable(true);
-            this.deleteButton.setDisable(newVal == null);
+            saveButton.setDisable(true);
+            deleteButton.setDisable(newVal == null);
         });
+        tableSelectionModel = connectionsTableView.getSelectionModel();
+        tableSelectionModel.setSelectionMode(SelectionMode.SINGLE);
+        connectionsTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        this.tableSelectionModel = this.connectionsTableView.getSelectionModel();
-        this.tableSelectionModel.setSelectionMode(SelectionMode.SINGLE);
-        this.connectionsTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
-        splitPane.getItems().add(this.connectionsTableView);
+        connectionsSection.getChildren().addAll(tableButtons, connectionsTableView);
 
-        // Configuration GridPane
-        GridPane gridPane = new GridPane();
-        gridPane.setAlignment(Pos.TOP_LEFT);
-        gridPane.setHgap(10.0);
-        gridPane.setVgap(10.0);
-        gridPane.setPadding(new Insets(12.0));
+        // Configuration Section (Modified: Java Home and Max Heap Size on same line)
+        VBox configBox = new VBox(10);
 
-        int row = 0;
-        // Address
-        this.addressLabel = new Label("Address:");
-        this.addressLabel.setMinWidth(110.0);
-        gridPane.add(this.addressLabel, 0, row);
+        HBox addressRow = new HBox(10);
+        addressLabel = new Label("Address:");
+        addressTextField = new TextField("https://localhost:8443");
+        addressTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
+        addressRow.getChildren().addAll(addressLabel, addressTextField);
+        HBox.setHgrow(addressTextField, Priority.ALWAYS);
 
-        this.addressTextField = new TextField("https://localhost:8443");
-        this.addressTextField.setPrefWidth(388.0);
-        this.addressTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
-        gridPane.add(this.addressTextField, 1, row);
-
-        this.launchButton = new Button("Launch");
-        this.launchButton.setMinWidth(63.0);
-        this.launchButton.setOnAction(event -> launch());
-        gridPane.add(this.launchButton, 3, row++);
-
-        // Java Home
-        this.javaHomeLabel = new Label("Java Home:");
-        gridPane.add(this.javaHomeLabel, 0, row);
-
-        this.bundledJavaCombo = new ComboBox<>(FXCollections.observableArrayList(
-            new BundledJava("", "Java 17"),
-            new BundledJava("", "Java 8")
+        HBox javaHeapRow = new HBox(10); // Combined Java Home and Max Heap Size
+        javaHomeLabel = new Label("Java Home:");
+        bundledJavaCombo = new ComboBox<>(FXCollections.observableArrayList(
+                new BundledJava("", "Java 17"),
+                new BundledJava("", "Java 8")
         ));
-
-        this.bundledJavaCombo.getSelectionModel().select(0);
-        this.bundledJavaCombo.setOnAction(event -> updateSaveButtonState());
-        gridPane.add(this.bundledJavaCombo, 1, row++, 3, 1);
-
-        // Max Heap Size
-        this.heapSizeLabel = new Label("Max Heap Size:");
-        gridPane.add(this.heapSizeLabel, 0, row);
-
-        this.heapSizeCombo = new ComboBox<>(FXCollections.observableArrayList(
-            new HeapMemory("256m", "256 MB"),
-            new HeapMemory("512m", "512 MB"),
-            new HeapMemory("1g", "1 GB"),
-            new HeapMemory("2g", "2 GB"),
-            new HeapMemory("4g", "4 GB")
+        bundledJavaCombo.getSelectionModel().select(0);
+        bundledJavaCombo.setOnAction(e -> updateSaveButtonState());
+        heapSizeLabel = new Label("Max Heap Size:");
+        heapSizeCombo = new ComboBox<>(FXCollections.observableArrayList(
+                new HeapMemory("256m", "256 MB"),
+                new HeapMemory("512m", "512 MB"),
+                new HeapMemory("1g", "1 GB"),
+                new HeapMemory("2g", "2 GB"),
+                new HeapMemory("4g", "4 GB")
         ));
-        this.heapSizeCombo.getSelectionModel().select(1);
-        this.heapSizeCombo.setOnAction(event -> updateSaveButtonState());
-        gridPane.add(this.heapSizeCombo, 1, row++, 3, 1);
+        heapSizeCombo.getSelectionModel().select(1);
+        heapSizeCombo.setOnAction(e -> updateSaveButtonState());
+        javaHeapRow.getChildren().addAll(javaHomeLabel, bundledJavaCombo, heapSizeLabel, heapSizeCombo);
+        HBox.setHgrow(bundledJavaCombo, Priority.ALWAYS);
+        HBox.setHgrow(heapSizeCombo, Priority.ALWAYS);
 
-        // Show Java Console
-        this.consoleLabel = new Label("Show Java Console:");
-        gridPane.add(this.consoleLabel, 0, row);
+        HBox consoleRow = new HBox(10);
+        consoleLabel = new Label("Show Java Console:");
+        showConsoleCheckBox = new CheckBox();
+        showConsoleCheckBox.setSelected(false);
+        showConsoleCheckBox.setOnAction(e -> updateSaveButtonState());
+        consoleRow.getChildren().addAll(consoleLabel, showConsoleCheckBox);
 
-        ToggleGroup consoleGroup = new ToggleGroup();
-        this.consoleYesRadio = new RadioButton("Yes");
-        this.consoleYesRadio.setToggleGroup(consoleGroup);
-        this.consoleYesRadio.setOnAction(event -> updateSaveButtonState());
+        configBox.getChildren().addAll(addressRow, javaHeapRow, consoleRow);
 
-        this.consoleNoRadio = new RadioButton("No");
-        this.consoleNoRadio.setToggleGroup(consoleGroup);
-        this.consoleNoRadio.setSelected(true);
-        this.consoleNoRadio.setOnAction(event -> updateSaveButtonState());
-
-        HBox consoleBox = new HBox(10, this.consoleYesRadio, this.consoleNoRadio);
-        gridPane.add(consoleBox, 1, row++, 3, 1);
-
-        // Progress Indicators
-        this.separator2 = new Separator();
-        gridPane.add(this.separator2, 0, row++, 4, 1);
-
-        this.progressBar = new ProgressBar(0.0);
-        this.progressBar.setMaxWidth(Double.MAX_VALUE);
-        this.progressIndicator = new ProgressIndicator(-1.0);
-        this.progressIndicator.setPrefHeight(20.0);
-        HBox progressBox = new HBox(10, this.progressBar, this.progressIndicator);
-        HBox.setHgrow(this.progressBar, Priority.ALWAYS);
-        progressBox.setAlignment(Pos.CENTER);
-        gridPane.add(progressBox, 0, row, 3, 1);
-
-        this.cancelButton = new Button("Cancel");
-        this.cancelButton.setPrefWidth(63.0);
-        this.cancelButton.setOnAction(event -> cancelLaunch());
-        gridPane.add(this.cancelButton, 3, row++);
-
-        this.progressText = new Text("Requesting main JNLP...");
-        VBox textBox = new VBox(this.progressText);
-        textBox.setPrefWidth(450.0);
-        gridPane.add(textBox, 0, row++, 4, 1);
-
-        // Bottom Buttons
-        this.closeWindowCheckBox = new CheckBox("Close this window after launching");
-
-
-        this.newButton = new Button("New");
-        this.newButton.setOnAction(event -> {
-            if (!isLaunching) {
-                String newName = "New Connection";
-                int counter = 1;
-                while (nameExists(newName)) {
-                    newName = "New Connection " + counter++;
-                }
-
-                TextInputDialog dialog = new TextInputDialog(newName);
-                dialog.setTitle("New Connection");
-                dialog.setHeaderText("Enter a name for this connection:");
-                dialog.initOwner(stage);
-                dialog.showAndWait().ifPresent(name -> {
-                    if (StringUtils.isNotBlank(name)) {
-                        String finalName = name;
-                        int cnt = 1;
-                        while (nameExists(finalName)) {
-                            finalName = name + " Copy " + cnt++;
-                        }
-                        addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false);
-                    }
-                });
-            }
-        });
-        this.saveButton = new Button("Save");
-        this.saveButton.setOnAction(event -> {
-            if (!isLaunching) {
-                Connection selected = this.connectionsTableView.getSelectionModel().getSelectedItem();
-                if (selected != null) {
-                    updateConnectionFromUI(selected);
-                    this.connectionsTableView.refresh();
-                    this.saveButton.setDisable(true);
-                    saveConnections();
-                }
-            }
-        });
-        this.saveAsButton = new Button("Save As...");
-        this.saveAsButton.setOnAction(event -> {
-            if (!isLaunching) {
-                String address = this.addressTextField.getText();
-                String javaHome = getJavaHome();
-                String javaHomeBundledValue = this.bundledJavaCombo.getValue().toString();
-                String javaFxHome = "";
-                String heapSize = "";
-                String icon = "";
-                boolean showConsole = this.consoleYesRadio.isSelected();
-                boolean sslProtocolsCustom = false;
-                String sslProtocols = "";
-                boolean sslCipherSuitesCustom = false;
-                String sslCipherSuites = "";
-                boolean useLegacyDH = false;
-
-                String newName = "New Connection";
-                int counter = 1;
-                while (nameExists(newName)) {
-                    newName = "New Connection " + counter++;
-                }
-
-                TextInputDialog dialog = new TextInputDialog(newName);
-                dialog.setTitle("Save Connection");
-                dialog.setHeaderText("Enter a name for this connection:");
-                dialog.initOwner(primaryStage);
-                dialog.showAndWait().ifPresent(name -> {
-                    if (StringUtils.isNotBlank(name)) {
-                        String finalName = name;
-                        int cnt = 1;
-                        while (nameExists(finalName)) {
-                            finalName = name + " Copy " + cnt++;
-                        }
-                        Connection newConn = new Connection(UUID.randomUUID().toString(), finalName, address, javaHome, javaHomeBundledValue,
-                                javaFxHome, heapSize, icon, showConsole, sslProtocolsCustom, sslProtocols, sslCipherSuitesCustom, sslCipherSuites, useLegacyDH);
-                        this.connectionsList.add(newConn);
-                        this.connectionsTableView.refresh();
-                        saveConnections();
-                        this.tableSelectionModel.select(newConn);
-                    }
-                });
-            }
-        });
-
-        this.deleteButton = new Button("Delete");
-        this.deleteButton.setDisable(true);
-        this.deleteButton.setOnAction(event -> {
-            if (!isLaunching) {
-                Connection selected = this.connectionsTableView.getSelectionModel().getSelectedItem();
-                if (selected != null) {
-                    int index = this.connectionsTableView.getSelectionModel().getSelectedIndex();
-                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                    alert.setTitle("Delete Connection");
-                    alert.setHeaderText("Are you sure to delete this connection?");
-                    alert.initOwner(primaryStage);
-                    alert.showAndWait().ifPresent(response -> {
-                        if (response == ButtonType.OK) {
-                            this.connectionsList.remove(selected);
-                            this.connectionsTableView.refresh();
-                            saveConnections();
-                            if (index < this.connectionsList.size()) {
-                                this.tableSelectionModel.select(index);
-                            } else if (!this.connectionsList.isEmpty()) {
-                                this.tableSelectionModel.select(this.connectionsList.size() - 1);
-                            }
-                        }
-                    });
-                }
-            }
-        });
-        HBox bottomLeft = new HBox(this.closeWindowCheckBox);
-        bottomLeft.setAlignment(Pos.BOTTOM_LEFT);
-        HBox bottomRight = new HBox(10, this.newButton, this.saveButton, this.saveAsButton, this.deleteButton);
-        bottomRight.setAlignment(Pos.BOTTOM_RIGHT);
-
-        AnchorPane bottomPane = new AnchorPane(bottomLeft, bottomRight);
-        AnchorPane.setLeftAnchor(bottomLeft, 10.0);
-        AnchorPane.setBottomAnchor(bottomLeft, 15.0);
-        AnchorPane.setRightAnchor(bottomRight, 10.0);
-
-        VBox configPane = new VBox(gridPane, bottomPane);
-        VBox.setVgrow(gridPane, Priority.ALWAYS);
-        splitPane.getItems().add(configPane);
-
+        // Progress Section (unchanged)
+        separator2 = new Separator();
+        progressBar = new ProgressBar(0.0);
+        progressBar.setMaxWidth(Double.MAX_VALUE);
+        launchButton = new Button("Launch");
+        launchButton.setOnAction(e -> launch());
+        cancelButton = new Button("Cancel");
+        cancelButton.setOnAction(e -> cancelLaunch());
+        cancelButton.setVisible(false);
+        StackPane buttonStack = new StackPane(launchButton, cancelButton);
+        buttonStack.setAlignment(Pos.CENTER);
+        HBox progressBarBox = new HBox(10, progressBar, buttonStack);
+        HBox.setHgrow(progressBar, Priority.ALWAYS);
+        progressIndicator = new ProgressIndicator(-1.0);
+        progressIndicator.setPrefHeight(20.0);
+        progressText = new Text("Requesting main JNLP...");
+        VBox progressBox = new VBox(10, separator2, progressBarBox, progressIndicator, progressText);
         setProgressControlsVisible(false);
 
-        this.connectionsTableView.getSelectionModel().selectFirst();
+        // Bottom Section (unchanged)
+        HBox bottomBox = new HBox(10);
+        closeWindowCheckBox = new CheckBox("Close after launch");
+        bottomBox.getChildren().add(closeWindowCheckBox);
+        bottomBox.setAlignment(Pos.CENTER_LEFT);
 
-        Scene scene = new Scene(root, 800, 400);
+        // Assemble layout
+        root.getChildren().addAll(connectionsSection, configBox, progressBox, bottomBox);
+
+        Scene scene = new Scene(root, 800, 600);
         stage.setScene(scene);
         stage.show();
+
+        connectionsTableView.getSelectionModel().selectFirst();
+    }
+
+    private void createNewConnection() {
+        if (!isLaunching) {
+            String newName = "New Connection";
+            int counter = 1;
+            while (nameExists(newName)) {
+                newName = "New Connection " + counter++;
+            }
+
+            TextInputDialog dialog = new TextInputDialog(newName);
+            dialog.setTitle("New Connection");
+            dialog.setHeaderText("Enter connection name:");
+
+            // Set an icon for the dialog's title bar
+            Stage dialogStage = (Stage) dialog.getDialogPane().getScene().getWindow();
+            dialogStage.getIcons().add(ICON_DEFAULT); // Replace with your image path
+
+            dialog.showAndWait().ifPresent(this::addConnectionWithName);
+        }
+    }
+
+    private void addConnectionWithName(String name) {
+        if (StringUtils.isNotBlank(name)) {
+            String finalName = name;
+            int cnt = 1;
+            while (nameExists(finalName)) {
+                finalName = name + " Copy " + cnt++;
+            }
+            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false);
+        }
+    }
+
+    private void saveCurrentConnection() {
+        if (!isLaunching) {
+            Connection selected = connectionsTableView.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                updateConnectionFromUI(selected);
+                connectionsTableView.refresh();
+                saveButton.setDisable(true);
+                saveConnections();
+            }
+        }
+    }
+
+    private void saveAsNewConnection() {
+        if (!isLaunching) {
+            TextInputDialog dialog = new TextInputDialog("New Connection");
+            dialog.setTitle("Save Connection");
+            dialog.setHeaderText("Enter new connection name:");
+            // Set an icon for the dialog's title bar
+            Stage dialogStage = (Stage) dialog.getDialogPane().getScene().getWindow();
+            dialogStage.getIcons().add(ICON_DEFAULT); // Replace with your image path
+
+            dialog.showAndWait().ifPresent(name -> {
+                if (StringUtils.isNotBlank(name)) {
+                    String finalName = name;
+                    int cnt = 1;
+                    while (nameExists(finalName)) {
+                        finalName = name + " Copy " + cnt++;
+                    }
+                    Connection newConn = new Connection(UUID.randomUUID().toString(), finalName,
+                            addressTextField.getText(), getJavaHome(), bundledJavaCombo.getValue().toString(),
+                            "", heapSizeCombo.getValue().toString(), "", showConsoleCheckBox.isSelected(),
+                            false, "", false, "", false);
+                    connectionsList.add(newConn);
+                    connectionsTableView.refresh();
+                    saveConnections();
+                    tableSelectionModel.select(newConn);
+                }
+            });
+        }
+    }
+
+    private void deleteCurrentConnection() {
+        if (!isLaunching) {
+            Connection selected = connectionsTableView.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                int index = connectionsTableView.getSelectionModel().getSelectedIndex();
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                alert.setTitle("Delete Connection");
+                alert.setHeaderText("Confirm deletion?");
+
+                // Set an icon for the dialog's title bar
+                Stage dialogStage = (Stage) alert.getDialogPane().getScene().getWindow();
+                dialogStage.getIcons().add(ICON_DEFAULT); //
+
+                alert.showAndWait().ifPresent(response -> {
+                    if (response == ButtonType.OK) {
+                        connectionsList.remove(selected);
+                        connectionsTableView.refresh();
+                        saveConnections();
+                        if (index < connectionsList.size()) {
+                            tableSelectionModel.select(index);
+                        } else if (!connectionsList.isEmpty()) {
+                            tableSelectionModel.select(connectionsList.size() - 1);
+                        }
+                    }
+                });
+            }
+        }
     }
 
     private void launch() {
@@ -430,15 +375,12 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 Platform.runLater(() -> {
                     Alert alert = new Alert(Alert.AlertType.ERROR);
                     alert.setTitle("Error");
-                    alert.setHeaderText("Error Launching BridgeLink");
+                    alert.setHeaderText("Launch Failed");
                     alert.setContentText(e.getMessage());
                     alert.initOwner(primaryStage);
                     alert.showAndWait();
                     resetUI();
                 });
-            } finally {
-                setProgressControlsVisible(false);
-                isLaunching = false;
             }
         }, "Launch Thread");
         launchThread.start();
@@ -451,18 +393,15 @@ public class BridgeLinkLauncher extends Application implements Progress {
     }
 
     private void setUIEnabled(boolean enabled) {
-        launchButton.setDisable(!enabled);
         addressTextField.setDisable(!enabled);
         bundledJavaCombo.setDisable(!enabled);
         heapSizeCombo.setDisable(!enabled);
-        consoleYesRadio.setDisable(!enabled);
-        consoleNoRadio.setDisable(!enabled);
+        showConsoleCheckBox.setDisable(!enabled);
         closeWindowCheckBox.setDisable(!enabled);
         newButton.setDisable(!enabled);
         saveButton.setDisable(!enabled);
         saveAsButton.setDisable(!enabled);
         deleteButton.setDisable(!enabled);
-        cancelButton.setDisable(enabled);
     }
 
     private void resetUI() {
@@ -470,6 +409,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         progressIndicator.setProgress(-1.0);
         progressText.setText("");
         setUIEnabled(true);
+        setProgressControlsVisible(false);
         isLaunching = false;
     }
 
@@ -477,6 +417,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         progressBar.setVisible(visible);
         progressIndicator.setVisible(visible);
         progressText.setVisible(visible);
+        launchButton.setVisible(!visible);
         cancelButton.setVisible(visible);
     }
 
@@ -546,12 +487,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private void updateUIFromConnection(Connection conn) {
         addressTextField.setText(conn.getAddress());
         bundledJavaCombo.getSelectionModel().select(new BundledJava("", conn.getJavaHomeBundledValue()));
-
-        if (conn.isShowJavaConsole()) {
-            consoleYesRadio.setSelected(true);
-        } else {
-            consoleNoRadio.setSelected(true);
-        }
+        showConsoleCheckBox.setSelected(conn.isShowJavaConsole());
 
         String heapSize = conn.getHeapSize();
         for (HeapMemory e : this.heapSizeCombo.getItems()) {
@@ -569,7 +505,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setJavaFxHome("");
         conn.setHeapSize(this.heapSizeCombo.getValue().toString());
         conn.setIcon("");
-        conn.setShowJavaConsole(this.consoleYesRadio.isSelected());
+        conn.setShowJavaConsole(showConsoleCheckBox.isSelected());
         conn.setSslProtocolsCustom(false);
         conn.setSslProtocols("");
         conn.setSslCipherSuitesCustom(false);
@@ -593,7 +529,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                         StringUtils.equals(selected.getJavaHome(), getJavaHome()) &&
                         StringUtils.equals(selected.getJavaHomeBundledValue(), this.bundledJavaCombo.getValue().toString()) &&
                         StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
-                        selected.isShowJavaConsole() == this.consoleYesRadio.isSelected() ;
+                        selected.isShowJavaConsole() == showConsoleCheckBox.isSelected();
 
         this.saveButton.setDisable(unchanged);
     }
