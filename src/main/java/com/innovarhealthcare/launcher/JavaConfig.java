@@ -37,8 +37,8 @@ public class JavaConfig {
         if(javaHome.equals("Java 17")){
             if(SystemUtils.IS_OS_WINDOWS){
                 if(!StringUtils.equalsIgnoreCase(SystemUtils.OS_ARCH, "x64")){
-//                    path = "-Djava.library.path=openjfx\\windows-x64\\17";
-                    path = "-Djava.library.path=C:\\Program Files\\Mirth Connect Administrator Launcher\\mcadministrator\\windows-x64\\openjfx\\11";
+                    path = "-Djava.library.path=openjfx\\windows-x64\\17";
+//                    path = "-Djava.library.path=C:\\Program Files\\Mirth Connect Administrator Launcher\\mcadministrator\\windows-x64\\openjfx\\11";
                 }
             } else if (SystemUtils.IS_OS_MAC){
                 path = "-Djava.library.path=openjfx\\macos\\17";

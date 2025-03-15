@@ -384,6 +384,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
         setProgressControlsVisible(false);
 
+        this.connectionsTableView.getSelectionModel().selectFirst();
+
         Scene scene = new Scene(root, 800, 400);
         stage.setScene(scene);
         stage.show();

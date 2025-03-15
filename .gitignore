@@ -38,3 +38,7 @@ build/
 .DS_Store
 /data/
 /bridge-link-cache/
+/cache/
+/jre/
+/openjfx/
+/lib/
