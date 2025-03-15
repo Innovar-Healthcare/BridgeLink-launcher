@@ -28,7 +28,7 @@ import java.util.Map;
  * @author thait
  */
 public class DownloadJNLP {
-    private static final String LOG_FILE = "bridge-link-launcher-debug.log";
+    private static final String LOG_FILE = "launcher-debug.log";
     private static final boolean DEBUG = true;
     private static final String CACHED_FOLDER = "cache";
     private String host = "";
@@ -37,7 +37,7 @@ public class DownloadJNLP {
         this.host = host;
     }
 
-    public CodeBase handle(Progress progress) {
+    public CodeBase handle(Progress progress) throws  Exception{
         progress.updateProgressText("Requesting main JNLP...");
 
         String jnlpUrl = host + "/" + "webstart.jnlp";
@@ -69,7 +69,6 @@ public class DownloadJNLP {
 
             log("✅ Detected BridgeLink Version: " + bridgeVersion);
 
-
             // Extract extension JNLPs
             progress.updateProgressText("Requesting JNLP for extensions...");
 
@@ -96,11 +95,11 @@ public class DownloadJNLP {
             localJars = download(jnlpUrl, coreJars, bridgeVersion, listExtensions, progress);
         } catch (Exception e) {
             log("❌ ERROR in handle(): " + e.getMessage());
-            progress.updateProgressText("Failed to requesting main JNLP. Address: " + jnlpUrl);
 
-            e.printStackTrace();
+            throw e;
         }
 
+        // prepare code base
         List<String> classpath = new ArrayList<>();
         for (File jar : localJars) {
             classpath.add(jar.getAbsolutePath());

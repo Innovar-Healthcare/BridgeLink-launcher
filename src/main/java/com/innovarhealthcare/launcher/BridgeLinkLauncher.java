@@ -15,10 +15,7 @@ import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.*;
 import javafx.stage.Stage;
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.util.UUID;
+import java.util.*;
 
 import javafx.application.Application;
 import javafx.collections.FXCollections;
@@ -76,7 +73,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         primaryStage = stage;
         stage.setTitle("BridgeLink Administrator Launcher (" + VERSION + ")");
         try {
-            stage.getIcons().add(new Image(getClass().getResourceAsStream("/images/launcher_32.png")));
+            stage.getIcons().add(ICON_DEFAULT);
         } catch (Exception e) {
             // Handle icon loading failure
         }
@@ -353,6 +350,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 DownloadJNLP download = new DownloadJNLP(host);
 
                 JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
+
                 CodeBase codeBase = download.handle(this);
 
                 updateProgressText("Launching......");
@@ -371,14 +369,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     }
                 });
 
-            } catch (InterruptedException | IOException e) {
+            } catch (Exception e ) {
                 Platform.runLater(() -> {
-                    Alert alert = new Alert(Alert.AlertType.ERROR);
-                    alert.setTitle("Error");
-                    alert.setHeaderText("Launch Failed");
-                    alert.setContentText(e.getMessage());
-                    alert.initOwner(primaryStage);
-                    alert.showAndWait();
+                    showErrorDialog(e, "Launch Failed");
                     resetUI();
                 });
             }
