@@ -32,6 +32,7 @@ public class DownloadJNLP {
     private static final boolean DEBUG = true;
     private static final String CACHED_FOLDER = "cache";
     private String host = "";
+    private volatile boolean cancelled = false;
 
     public DownloadJNLP(String host) {
         this.host = host;
@@ -39,6 +40,7 @@ public class DownloadJNLP {
 
     public CodeBase handle(Progress progress) throws  Exception{
         progress.updateProgressText("Requesting main JNLP...");
+        checkCancelled("handle start");
 
         String jnlpUrl = host + "/" + "webstart.jnlp";
 
@@ -57,6 +59,7 @@ public class DownloadJNLP {
             // Extract core JARs
             NodeList jarList = doc.getElementsByTagName("jar");
             for (int i = 0; i < jarList.getLength(); i++) {
+                checkCancelled("core JAR extraction");
                 Element jarElement = (Element) jarList.item(i);
                 coreJars.add(jarElement.getAttribute("href"));
             }
@@ -71,15 +74,16 @@ public class DownloadJNLP {
 
             // Extract extension JNLPs
             progress.updateProgressText("Requesting JNLP for extensions...");
+            checkCancelled("extension JNLP extraction");
 
             NodeList extensionNodes = doc.getElementsByTagName("extension");
             List<String> extensionJnlpUrls = new ArrayList<>();
 
-            String Url = jnlpUrl.replace("webstart.jnlp", "");
+            String baseUrl = jnlpUrl.replace("webstart.jnlp", "");
             for (int i = 0; i < extensionNodes.getLength(); i++) {
                 Element extElement = (Element) extensionNodes.item(i);
                 String extJnlpPath = extElement.getAttribute("href");
-                String extJnlpUrl = Url + extJnlpPath;
+                String extJnlpUrl = baseUrl + extJnlpPath;
                 extensionJnlpUrls.add(extJnlpUrl);
             }
 
@@ -88,6 +92,7 @@ public class DownloadJNLP {
             // ✅ Fetch extension JARs
             List<ExtensionInfo> listExtensions = new ArrayList<>();
             for (String extJnlpUrl : extensionJnlpUrls) {
+                checkCancelled("parseExtensionJnlp");
                 listExtensions.add(parseExtensionJnlp(extJnlpUrl, bridgeVersion));
             }
 
@@ -143,8 +148,9 @@ public class DownloadJNLP {
     }
 
     private List<File> download(String jnlpUrl, List<String> coreJars, String bridgeVersion,
-            List<ExtensionInfo> listExtensions, Progress progress) {
+            List<ExtensionInfo> listExtensions, Progress progress) throws  Exception{
         log("🚀 Starting download process for BridgeLink version: " + bridgeVersion);
+        checkCancelled("download start");
 
         String baseUrl = jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9); // Ensure base URL includes `/webstart`
         String cacheDir = CACHED_FOLDER +"/" + bridgeVersion;
@@ -159,6 +165,7 @@ public class DownloadJNLP {
 
         // ✅ Download Core JARs
         for (String jar : coreJars) {
+            checkCancelled("core JAR download");
             String correctedJarUrl = baseUrl + "/client-lib/" + new File(jar).getName();
             File localFile = new File(cacheCoreDir, new File(jar).getName());
 
@@ -179,6 +186,8 @@ public class DownloadJNLP {
 
         // ✅ Download Extension JARs
         for (ExtensionInfo jar : listExtensions) {
+            checkCancelled("extension JAR download");
+
             String extensionName = jar.getName();
             String extensionFolder = cacheExtensionsDir + "/" + extensionName;
             Map<String, String> mapJars = jar.getMapJars();
@@ -191,6 +200,7 @@ public class DownloadJNLP {
             }
 
             for (Map.Entry<String, String> entry : mapJars.entrySet()) {
+                checkCancelled("extension JAR download loop");
                 String jarUrl = entry.getKey();
                 String jarName = entry.getValue();
                 File localFile = new File(extensionFolder, jarName);
@@ -211,7 +221,11 @@ public class DownloadJNLP {
         return localJars;
     }
 
-    private boolean downloadFile(String urlStr, File destination, String expectedSha256) {
+    private boolean downloadFile(String urlStr, File destination, String expectedSha256) throws InterruptedException {
+        if (Thread.interrupted() || cancelled){
+            throw new InterruptedException("Download cancelled");
+        }
+
         try {
             if (destination.exists() && expectedSha256 != null) {
                 String actualSha256 = calculateSha256(destination);
@@ -279,6 +293,17 @@ public class DownloadJNLP {
             } catch (IOException e) {
                 System.err.println("ERROR: Could not write to log file - " + e.getMessage());
             }
+        }
+    }
+
+    public void cancel() {
+        cancelled = true;
+    }
+
+    private void checkCancelled(String context) throws InterruptedException {
+        if (Thread.interrupted() || cancelled) {
+            log("🚫 Cancelled at: " + context);
+            throw new InterruptedException("Download cancelled");
         }
     }
 }

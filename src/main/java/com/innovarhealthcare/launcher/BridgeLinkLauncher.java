@@ -64,6 +64,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private Button saveAsButton;
     private Button deleteButton;
     private Thread launchThread;
+    private volatile DownloadJNLP currentDownload;
     private volatile boolean isLaunching = false;
     private Stage primaryStage;
 
@@ -347,27 +348,24 @@ public class BridgeLinkLauncher extends Application implements Progress {
         launchThread = new Thread(() -> {
             try {
                 String host = addressTextField.getText();
+                updateProgressText("Downloading JNLP from " + host);
+
                 DownloadJNLP download = new DownloadJNLP(host);
+                currentDownload = download;
 
                 JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
 
-                updateProgressText("Downloading......");
-
                 CodeBase codeBase = download.handle(this);
-
-                updateProgressText("Download completed!");
-
-                updateProgressText("Launching......");
+                currentDownload = null;
 
                 ProcessLauncher process = new ProcessLauncher();
+                updateProgressText("Starting application...");
                 process.launch(javaConfig, codeBase, showConsoleCheckBox.isSelected());
 
-                Thread.sleep(5000);
-                progressText.setText("Launch done!");
-                Thread.sleep(1000);
+                updateProgressText("Application launched successfully");
 
+                Thread.sleep(1000);
                 Platform.runLater(() -> {
-                    progressText.setText("Launch completed!");
                     if (closeWindowCheckBox.isSelected()) {
                         primaryStage.close();
                     } else {
@@ -375,11 +373,18 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     }
                 });
 
+            } catch (InterruptedException e) {
+                Platform.runLater(() -> {
+                    progressText.setText("Launch cancelled");
+                    resetUI();
+                });
             } catch (Exception e ) {
                 Platform.runLater(() -> {
                     showErrorDialog(e, "Launch Failed");
                     resetUI();
                 });
+            } finally {
+                currentDownload = null;
             }
         }, "Launch Thread");
         launchThread.start();
@@ -387,7 +392,18 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void cancelLaunch() {
         if (launchThread != null && launchThread.isAlive()) {
+            Platform.runLater(() -> progressText.setText("Cancelling..."));
             launchThread.interrupt();
+            if (currentDownload != null) {
+                currentDownload.cancel();
+            }
+
+            // Give a moment for cancellation to propagate
+            try {
+                launchThread.join(1000); // Wait up to 1 second for thread to exit
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // Restore interrupted status
+            }
         }
     }
 
