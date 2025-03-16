@@ -351,17 +351,23 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
                 JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
 
+                updateProgressText("Downloading......");
+
                 CodeBase codeBase = download.handle(this);
+
+                updateProgressText("Download completed!");
 
                 updateProgressText("Launching......");
 
                 ProcessLauncher process = new ProcessLauncher();
-                process.launch(javaConfig, codeBase);
+                process.launch(javaConfig, codeBase, showConsoleCheckBox.isSelected());
 
                 Thread.sleep(5000);
+                progressText.setText("Launch done!");
+                Thread.sleep(1000);
 
                 Platform.runLater(() -> {
-                    progressText.setText("Launch complete!");
+                    progressText.setText("Launch completed!");
                     if (closeWindowCheckBox.isSelected()) {
                         primaryStage.close();
                     } else {
