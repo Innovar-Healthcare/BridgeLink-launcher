@@ -1,34 +1,26 @@
 package com.innovarhealthcare.launcher;
 
-import com.innovarhealthcare.launcher.interfaces.Progress;
-import javafx.application.Platform;
-
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 public class ProcessLauncher {
     public void launch(JavaConfig javaConfig, CodeBase codeBase, boolean isShowConsole) throws Exception{
-        List<String> command = new ArrayList<>();
-        command.add("java");
-        command.add(javaConfig.getMaxHeapSizeBuilder());
-        command.add(javaConfig.getJavaHomeBuilder());
-        command.add("-cp");
-        command.add(String.join(File.pathSeparator, codeBase.getClasspath()));
-        command.add(codeBase.getMainClass());
-        command.add(codeBase.getHost());
-
-        ProcessBuilder targetPb = new ProcessBuilder(command);
+        ProcessBuilder targetPb = new ProcessBuilder(
+                javaConfig.getJavaHomeBuilder(),
+                javaConfig.getMaxHeapSizeBuilder(),
+                "-cp",
+                String.join(File.pathSeparator, codeBase.getClasspath()),
+                codeBase.getMainClass(),
+                codeBase.getHost()
+        );
         targetPb.redirectErrorStream(true);
 
         Process targetProcess;
         if(isShowConsole) {
             ProcessBuilder consolePb = new ProcessBuilder(
-                    "java",
-                    javaConfig.getMaxHeapSizeBuilder(),
                     javaConfig.getJavaHomeBuilder(),
-                    "-cp", "lib/java-console.jar",
+                    "-Xmx256m",
+                    "-cp",
+                    "lib/java-console.jar",
                     "com.innovarhealthcare.launcher.JavaConsoleDialog"
             );
 
