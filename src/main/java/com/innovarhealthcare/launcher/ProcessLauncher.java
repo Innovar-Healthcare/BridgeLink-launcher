@@ -1,17 +1,28 @@
 package com.innovarhealthcare.launcher;
 
+import org.apache.commons.lang3.SystemUtils;
+
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ProcessLauncher {
     public void launch(JavaConfig javaConfig, CodeBase codeBase, boolean isShowConsole) throws Exception{
-        ProcessBuilder targetPb = new ProcessBuilder(
-                javaConfig.getJavaHomeBuilder(),
-                javaConfig.getMaxHeapSizeBuilder(),
-                "-cp",
-                String.join(File.pathSeparator, codeBase.getClasspath()),
-                codeBase.getMainClass(),
-                codeBase.getHost()
-        );
+        List<String> command = new ArrayList<>();
+        command.add(javaConfig.getJavaHomeBuilder());
+        command.add(javaConfig.getMaxHeapSizeBuilder());
+        if (SystemUtils.IS_OS_MAC){
+            if("Java 17".equals(javaConfig.getJavaHome())){
+//                command.add("--add-opens=java.base/java.util=ALL-UNNAMED"); // Ensure reflection-based features work
+                command.add("--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED");
+            }
+        }
+        command.add("-cp");
+        command.add(String.join(File.pathSeparator, codeBase.getClasspath()));
+        command.add(codeBase.getMainClass());
+        command.add(codeBase.getHost());
+
+        ProcessBuilder targetPb = new ProcessBuilder(command);
         targetPb.redirectErrorStream(true);
 
         Process targetProcess;

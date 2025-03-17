@@ -29,7 +29,7 @@ import java.util.Map;
  */
 public class DownloadJNLP {
     private static final String LOG_FILE = "launcher-debug.log";
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
     private static final String CACHED_FOLDER = "cache";
     private String host = "";
     private volatile boolean cancelled = false;

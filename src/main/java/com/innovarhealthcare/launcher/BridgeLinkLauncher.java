@@ -501,8 +501,15 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void updateUIFromConnection(Connection conn) {
         addressTextField.setText(conn.getAddress());
-        bundledJavaCombo.getSelectionModel().select(new BundledJava("", conn.getJavaHomeBundledValue()));
         showConsoleCheckBox.setSelected(conn.isShowJavaConsole());
+
+        String javaHomeBundledValue = conn.getJavaHomeBundledValue();
+        for (BundledJava e : this.bundledJavaCombo.getItems()) {
+            if (StringUtils.equalsIgnoreCase(e.getVersion(), javaHomeBundledValue)) {
+                this.bundledJavaCombo.getSelectionModel().select(e);
+                break;
+            }
+        }
 
         String heapSize = conn.getHeapSize();
         for (HeapMemory e : this.heapSizeCombo.getItems()) {
