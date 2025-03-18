@@ -30,12 +30,13 @@ import java.util.Map;
 public class DownloadJNLP {
     private static final String LOG_FILE = "launcher-debug.log";
     private static final boolean DEBUG = false;
-    private static final String CACHED_FOLDER = "cache";
+    private final String CACHED_FOLDER;
     private String host = "";
     private volatile boolean cancelled = false;
 
-    public DownloadJNLP(String host) {
+    public DownloadJNLP(String host, String currentDir) {
         this.host = host;
+        this.CACHED_FOLDER =  currentDir.isEmpty() ? "cache" :currentDir + "/cache";
     }
 
     public CodeBase handle(Progress progress) throws  Exception{

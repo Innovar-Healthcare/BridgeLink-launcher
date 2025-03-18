@@ -31,6 +31,7 @@ import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.util.Callback;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 //import org.apache.logging.log4j.LogManager;
 //import org.apache.logging.log4j.Logger;
@@ -66,6 +67,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private Thread launchThread;
     private volatile DownloadJNLP currentDownload;
     private volatile boolean isLaunching = false;
+    private String currentDir = "";
     private Stage primaryStage;
 
 
@@ -73,6 +75,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
     public void start(Stage stage) {
         primaryStage = stage;
         stage.setTitle("BridgeLink Administrator Launcher (" + VERSION + ")");
+
+        if (SystemUtils.IS_OS_MAC) {
+            currentDir = getParameters().getRaw().isEmpty() ? System.getProperty("user.dir") : getParameters().getRaw().get(0);
+        }
+
         try {
             stage.getIcons().add(ICON_DEFAULT);
         } catch (Exception e) {
@@ -350,7 +357,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 String host = addressTextField.getText();
                 updateProgressText("Downloading JNLP from " + host);
 
-                DownloadJNLP download = new DownloadJNLP(host);
+                DownloadJNLP download = new DownloadJNLP(host, currentDir);
                 currentDownload = download;
 
                 JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
@@ -446,7 +453,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private List<Connection> loadConnections() {
         List<Connection> connections = new ArrayList<>();
-        File connectionsFile = new File("data/connections.json");
+        String pathName = currentDir.isEmpty() ? "data/connections.json" : currentDir + "/data/connections.json";
+        File connectionsFile = new File(pathName);
         if (connectionsFile.exists()) {
             try {
                 ObjectMapper objectMapper = new ObjectMapper();
@@ -460,12 +468,13 @@ public class BridgeLinkLauncher extends Application implements Progress {
     }
 
     private void saveConnections() {
-        File directory = new File("data");
+        String pathName = currentDir.isEmpty() ? "data" : currentDir + "/data";
+        File directory = new File(pathName);
         if (!directory.exists()) {
             directory.mkdirs();
         }
 
-        File connectionsFile = new File("data/connections.json");
+        File connectionsFile = new File(directory, "connections.json");
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             objectMapper.writeValue(connectionsFile, this.connectionsList);
