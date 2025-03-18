@@ -37,8 +37,6 @@ build/
 ### Mac OS ###
 .DS_Store
 /data/
-/bridge-link-cache/
 /cache/
 /jre/
 /openjfx/
-/lib/
