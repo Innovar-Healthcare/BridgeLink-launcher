@@ -1,7 +1,6 @@
 package com.innovarhealthcare.launcher;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.innovarhealthcare.launcher.interfaces.Progress;
 
 import javafx.application.Application;
@@ -17,24 +16,14 @@ import javafx.stage.Stage;
 import java.io.*;
 import java.util.*;
 
-import javafx.application.Application;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.geometry.Insets;
-import javafx.geometry.Pos;
-import javafx.scene.Scene;
-import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.*;
 import javafx.scene.text.Text;
-import javafx.stage.Stage;
-import javafx.util.Callback;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
-//import org.apache.logging.log4j.LogManager;
-//import org.apache.logging.log4j.Logger;
 
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final String VERSION = "1.0.0";
@@ -500,12 +489,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private Image getIconImage(String iconName) {
         return new Image(getClass().getResourceAsStream("/images/launcher_32.png"), 20, 20, true, true);
-
-//        try {
-//            return new Image(getClass().getResourceAsStream("/images/" + iconName), 20, 20, true, true);
-//        } catch (Exception e) {
-//            return new Image(getClass().getResourceAsStream("/images/launcher_32.png"), 20, 20, true, true);
-//        }
     }
 
     private void updateUIFromConnection(Connection conn) {
