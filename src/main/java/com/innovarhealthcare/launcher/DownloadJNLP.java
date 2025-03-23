@@ -35,6 +35,9 @@ public class DownloadJNLP {
     private volatile boolean cancelled = false;
 
     public DownloadJNLP(String host, String currentDir) {
+        if (host.endsWith("/")) {
+            host = host.substring(0, host.length() - 1);
+        }
         this.host = host;
         this.CACHED_FOLDER =  currentDir.isEmpty() ? "cache" :currentDir + "/cache";
     }

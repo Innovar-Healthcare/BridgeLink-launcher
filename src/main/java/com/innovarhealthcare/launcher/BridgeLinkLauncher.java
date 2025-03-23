@@ -12,8 +12,10 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.*;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import java.io.*;
+import java.nio.file.Files;
 import java.util.*;
 
 import javafx.collections.FXCollections;
@@ -57,6 +59,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private Button saveButton;
     private Button saveAsButton;
     private Button deleteButton;
+    private Button importButton;
+    private Button exportButton;
     private Thread launchThread;
     private volatile DownloadJNLP currentDownload;
     private volatile boolean isLaunching = false;
@@ -147,6 +151,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
             if (newVal != null) {
                 addressTextField.setText(newVal.getAddress());
                 updateUIFromConnection(newVal);
+                exportButton.setDisable(false);
+            } else {
+                exportButton.setDisable(true);
             }
             saveButton.setDisable(true);
             deleteButton.setDisable(newVal == null);
@@ -155,7 +162,22 @@ public class BridgeLinkLauncher extends Application implements Progress {
         tableSelectionModel.setSelectionMode(SelectionMode.SINGLE);
         connectionsTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        connectionsSection.getChildren().addAll(tableButtons, connectionsTableView);
+        VBox rightButtons = new VBox(10);
+        importButton = new Button("Import");
+        importButton.setOnAction(e -> importConnections());
+        exportButton = new Button("Export");
+        exportButton.setOnAction(e -> exportConnections());
+        exportButton.setDisable(true); // Disabled until a connection is selected
+        rightButtons.getChildren().addAll(importButton, exportButton);
+        rightButtons.setAlignment(Pos.TOP_CENTER);
+
+        HBox tableArea = new HBox(10);
+        tableArea.getChildren().addAll(connectionsTableView, rightButtons);
+        HBox.setHgrow(connectionsTableView, Priority.ALWAYS);
+
+        connectionsSection.getChildren().addAll(tableButtons, tableArea);
+
+//        connectionsSection.getChildren().addAll(tableButtons, connectionsTableView);
 
         // Configuration Section (Modified: Java Home and Max Heap Size on same line)
         VBox configBox = new VBox(10);
@@ -243,6 +265,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
         connectionsTableView.getSelectionModel().selectFirst();
     }
+
 
     private void createNewConnection() {
         if (!isLaunching) {
@@ -418,6 +441,66 @@ public class BridgeLinkLauncher extends Application implements Progress {
         }
     }
 
+    private void importConnections() {
+        if (isLaunching) return;
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Import Connections");
+        fileChooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("JSON Files", "*.json")
+        );
+        File file = fileChooser.showOpenDialog(primaryStage);
+
+        if (file != null) {
+            try {
+                String content = new String(Files.readAllBytes(file.toPath()));
+                ObjectMapper objectMapper = new ObjectMapper();
+                List<Connection> importedConnections = objectMapper.readValue(content,
+                        new TypeReference<List<Connection>>() {});
+
+                // Handle duplicate names
+                for (Connection conn : importedConnections) {
+                    String baseName = conn.getName();
+                    String newName = baseName;
+                    int counter = 1;
+                    while (nameExists(newName)) {
+                        newName = baseName + " (Imported " + counter++ + ")";
+                    }
+                    conn.setName(newName);
+                    conn.setId(UUID.randomUUID().toString()); // Generate new unique ID
+                    connectionsList.add(conn);
+                }
+
+                connectionsTableView.refresh();
+                saveConnections();
+            } catch (IOException e) {
+                showAlert("Failed to import connections: " + e.getMessage());
+            }
+        }
+    }
+
+    // New method to export selected connection
+    private void exportConnections() {
+        if (isLaunching || connectionsList.isEmpty()) return;
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Export All Connections");
+        fileChooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("JSON Files", "*.json")
+        );
+        fileChooser.setInitialFileName("all_connections.json"); // Default name for all connections
+        File file = fileChooser.showSaveDialog(primaryStage);
+
+        if (file != null) {
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                objectMapper.writeValue(file, connectionsList); // Export entire list
+            } catch (IOException e) {
+                showAlert("Failed to export connections: " + e.getMessage());
+            }
+        }
+    }
+
     private void setUIEnabled(boolean enabled) {
         addressTextField.setDisable(!enabled);
         usernameTextField.setDisable(!enabled);
@@ -430,6 +513,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
         saveButton.setDisable(!enabled);
         saveAsButton.setDisable(!enabled);
         deleteButton.setDisable(!enabled);
+        importButton.setDisable(!enabled);
+        exportButton.setDisable(!enabled || connectionsTableView.getSelectionModel().getSelectedItem() == null);
     }
 
     private void resetUI() {
