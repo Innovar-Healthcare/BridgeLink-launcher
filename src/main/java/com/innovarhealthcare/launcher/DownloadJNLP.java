@@ -48,6 +48,7 @@ public class DownloadJNLP {
         log("🔍 Fetching main JNLP from: " + jnlpUrl);
 
         List<File> localJars = new ArrayList<>();
+        String bridgeVersion = "unknown";
         try {
             URL url = new URL(jnlpUrl);
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -55,7 +56,6 @@ public class DownloadJNLP {
             Document doc = builder.parse(url.openStream());
 
             List<String> coreJars = new ArrayList<>();
-            String bridgeVersion = "unknown";
 
             // Extract core JARs
             NodeList jarList = doc.getElementsByTagName("jar");
@@ -111,7 +111,7 @@ public class DownloadJNLP {
             classpath.add(jar.getAbsolutePath());
         }
 
-        return new CodeBase(classpath,"com.mirth.connect.client.ui.Mirth", host);
+        return new CodeBase(classpath,"com.mirth.connect.client.ui.Mirth", host, bridgeVersion);
     }
 
     private ExtensionInfo parseExtensionJnlp(String extJnlpUrl, String bridgeVersion) {

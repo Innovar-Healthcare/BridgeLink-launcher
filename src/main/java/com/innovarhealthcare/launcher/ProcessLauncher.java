@@ -44,6 +44,9 @@ public class ProcessLauncher {
         command.add(String.join(File.pathSeparator, codeBase.getClasspath()));
         command.add(codeBase.getMainClass());
         command.add(codeBase.getHost());
+        command.add(codeBase.getVersion());
+//        command.add("admin");
+//        command.add("admin");
 
         ProcessBuilder targetPb = new ProcessBuilder(command);
         targetPb.redirectErrorStream(true);
