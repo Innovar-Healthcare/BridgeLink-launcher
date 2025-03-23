@@ -1,5 +1,6 @@
 package com.innovarhealthcare.launcher;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 
 import java.io.*;
@@ -7,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ProcessLauncher {
-    public void launch(JavaConfig javaConfig, CodeBase codeBase, boolean isShowConsole) throws Exception{
+    public void launch(JavaConfig javaConfig, Credential credential, CodeBase codeBase, boolean isShowConsole) throws Exception{
         List<String> command = new ArrayList<>();
         command.add(javaConfig.getJavaHomeBuilder());
         command.add(javaConfig.getMaxHeapSizeBuilder());
@@ -45,8 +46,14 @@ public class ProcessLauncher {
         command.add(codeBase.getMainClass());
         command.add(codeBase.getHost());
         command.add(codeBase.getVersion());
-//        command.add("admin");
-//        command.add("admin");
+
+        if(StringUtils.isNotBlank(credential.getUsername())){
+            command.add(credential.getUsername());
+        }
+
+        if(StringUtils.isNotBlank(credential.getPassword())){
+            command.add(credential.getPassword());
+        }
 
         ProcessBuilder targetPb = new ProcessBuilder(command);
         targetPb.redirectErrorStream(true);

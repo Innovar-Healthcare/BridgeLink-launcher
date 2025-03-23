@@ -15,13 +15,15 @@ public class Connection {
     private boolean sslCipherSuitesCustom;
     private String sslCipherSuites;
     private boolean useLegacyDHSettings;
+    private String username;
+    private String password;
 
     // Constructors, getters, and setters
     public Connection() {}
 
     public Connection(String id, String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
                       String heapSize, String icon, boolean showJavaConsole, boolean sslProtocolsCustom, String sslProtocols,
-                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings) {
+                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password) {
         this.id = id;
         this.name = name;
         this.address = address;
@@ -36,6 +38,8 @@ public class Connection {
         this.sslCipherSuitesCustom = sslCipherSuitesCustom;
         this.sslCipherSuites = sslCipherSuites;
         this.useLegacyDHSettings = useLegacyDHSettings;
+        this.username = username;
+        this.password = password;
     }
 
     public String getId() { return id; }
@@ -65,4 +69,8 @@ public class Connection {
     public void setSslCipherSuites(String sslCipherSuites) { this.sslCipherSuites = sslCipherSuites; }
     public boolean isUseLegacyDHSettings() { return useLegacyDHSettings; }
     public void setUseLegacyDHSettings(boolean useLegacyDHSettings) { this.useLegacyDHSettings = useLegacyDHSettings; }
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
 }

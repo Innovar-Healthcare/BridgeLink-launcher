@@ -24,6 +24,8 @@ import javafx.scene.text.Text;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
+//import org.apache.logging.log4j.LogManager;
+//import org.apache.logging.log4j.Logger;
 
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final String VERSION = "1.0.0";
@@ -36,6 +38,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private Label addressLabel;
     private TextField addressTextField;
+    private TextField usernameTextField;
+    private PasswordField passwordField;
     private Button launchButton;
     private Label javaHomeLabel;
     private ComboBox<BundledJava> bundledJavaCombo;
@@ -163,6 +167,17 @@ public class BridgeLinkLauncher extends Application implements Progress {
         addressRow.getChildren().addAll(addressLabel, addressTextField);
         HBox.setHgrow(addressTextField, Priority.ALWAYS);
 
+        HBox credentialsRow = new HBox(10);
+        Label usernameLabel = new Label("Username:");
+        usernameTextField = new TextField();
+        usernameTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
+        Label passwordLabel = new Label("Password:");
+        passwordField = new PasswordField();
+        passwordField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
+        credentialsRow.getChildren().addAll(usernameLabel, usernameTextField, passwordLabel, passwordField);
+        HBox.setHgrow(usernameTextField, Priority.ALWAYS);
+        HBox.setHgrow(passwordField, Priority.ALWAYS);
+
         HBox javaHeapRow = new HBox(10); // Combined Java Home and Max Heap Size
         javaHomeLabel = new Label("Java Home:");
         bundledJavaCombo = new ComboBox<>(FXCollections.observableArrayList(
@@ -192,7 +207,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         showConsoleCheckBox.setOnAction(e -> updateSaveButtonState());
         consoleRow.getChildren().addAll(consoleLabel, showConsoleCheckBox);
 
-        configBox.getChildren().addAll(addressRow, javaHeapRow, consoleRow);
+        configBox.getChildren().addAll(addressRow, credentialsRow, javaHeapRow, consoleRow);
 
         // Progress Section (unchanged)
         separator2 = new Separator();
@@ -256,7 +271,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             while (nameExists(finalName)) {
                 finalName = name + " Copy " + cnt++;
             }
-            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false);
+            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false, "", "");
         }
     }
 
@@ -291,7 +306,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     Connection newConn = new Connection(UUID.randomUUID().toString(), finalName,
                             addressTextField.getText(), getJavaHome(), bundledJavaCombo.getValue().toString(),
                             "", heapSizeCombo.getValue().toString(), "", showConsoleCheckBox.isSelected(),
-                            false, "", false, "", false);
+                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText());
                     connectionsList.add(newConn);
                     connectionsTableView.refresh();
                     saveConnections();
@@ -350,13 +365,13 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 currentDownload = download;
 
                 JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
-
+                Credential credential = new Credential(StringUtils.trim(usernameTextField.getText()), StringUtils.trim(passwordField.getText()));
                 CodeBase codeBase = download.handle(this);
                 currentDownload = null;
 
                 ProcessLauncher process = new ProcessLauncher();
                 updateProgressText("Starting application...");
-                process.launch(javaConfig, codeBase, showConsoleCheckBox.isSelected());
+                process.launch(javaConfig, credential, codeBase, showConsoleCheckBox.isSelected());
 
                 updateProgressText("Application launched successfully");
 
@@ -405,6 +420,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void setUIEnabled(boolean enabled) {
         addressTextField.setDisable(!enabled);
+        usernameTextField.setDisable(!enabled);
+        passwordField.setDisable(!enabled);
         bundledJavaCombo.setDisable(!enabled);
         heapSizeCombo.setDisable(!enabled);
         showConsoleCheckBox.setDisable(!enabled);
@@ -474,9 +491,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void addConnection(String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
                                String heapSize, String icon, boolean showJavaConsole, String sslProtocols,
-                               boolean sslProtocolsCustom, String sslCipherSuites, boolean useLegacyDHSettings) {
+                               boolean sslProtocolsCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password) {
         Connection conn = new Connection(UUID.randomUUID().toString(), name, address, javaHome, javaHomeBundledValue,
-                javaFxHome, heapSize, icon, showJavaConsole, sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings);
+                javaFxHome, heapSize, icon, showJavaConsole, sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings, username, password);
 
         this.connectionsList.add(conn);
         this.connectionsTableView.refresh();
@@ -493,6 +510,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void updateUIFromConnection(Connection conn) {
         addressTextField.setText(conn.getAddress());
+        usernameTextField.setText(conn.getUsername());
+        passwordField.setText(conn.getPassword());
         showConsoleCheckBox.setSelected(conn.isShowJavaConsole());
 
         String javaHomeBundledValue = conn.getJavaHomeBundledValue();
@@ -514,6 +533,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void updateConnectionFromUI(Connection conn) {
         conn.setAddress(this.addressTextField.getText());
+        conn.setUsername(this.usernameTextField.getText());
+        conn.setPassword(this.passwordField.getText());
         conn.setJavaHome(getJavaHome());
         conn.setJavaHomeBundledValue(this.bundledJavaCombo.getValue().toString());
         conn.setJavaFxHome("");
@@ -540,6 +561,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
         boolean unchanged =
                 StringUtils.equals(selected.getAddress(), this.addressTextField.getText()) &&
+                        StringUtils.equals(selected.getUsername(), this.usernameTextField.getText()) &&
+                        StringUtils.equals(selected.getPassword(), this.passwordField.getText()) &&
                         StringUtils.equals(selected.getJavaHome(), getJavaHome()) &&
                         StringUtils.equals(selected.getJavaHomeBundledValue(), this.bundledJavaCombo.getValue().toString()) &&
                         StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
