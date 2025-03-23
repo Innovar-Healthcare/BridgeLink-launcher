@@ -30,8 +30,9 @@ import org.apache.commons.lang3.exception.ExceptionUtils;
 //import org.apache.logging.log4j.Logger;
 
 public class BridgeLinkLauncher extends Application implements Progress {
-    private static final String VERSION = "1.0.0";
-    private static final Image ICON_DEFAULT = new Image("/images/launcher_32.png");
+    private static final boolean DEVELOP = true;
+    private static final String VERSION = DEVELOP ? "Development 1.0.1" : "1.0.1";
+    private static final Image ICON_DEFAULT = new Image("/images/logo.png");
 
     private final ObservableList<Connection> connectionsList = FXCollections.observableArrayList();
 
@@ -590,7 +591,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     }
 
     private Image getIconImage(String iconName) {
-        return new Image(getClass().getResourceAsStream("/images/launcher_32.png"), 20, 20, true, true);
+        return new Image(getClass().getResourceAsStream("/images/logo.png"), 20, 20, true, true);
     }
 
     private void updateUIFromConnection(Connection conn) {
