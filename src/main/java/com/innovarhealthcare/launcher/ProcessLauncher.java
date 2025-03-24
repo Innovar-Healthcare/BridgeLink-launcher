@@ -14,6 +14,8 @@ public class ProcessLauncher {
         command.add(javaConfig.getMaxHeapSizeBuilder());
 
         if (SystemUtils.IS_OS_MAC){
+            command.add("-Xdock:icon=icon.png");
+            command.add("-Xdock:name=BridgeLink Administrator Launcher");
             if("Java 17".equals(javaConfig.getJavaHome())){
                 command.add("--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED");
             }
