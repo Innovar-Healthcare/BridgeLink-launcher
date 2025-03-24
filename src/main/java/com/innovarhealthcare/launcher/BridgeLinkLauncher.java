@@ -40,6 +40,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private TreeTableView<Connection> connectionsTreeTableView;
     private TreeTableView.TreeTableViewSelectionModel<Connection> treeSelectionModel;
 
+    private TextField filterField;
     private TextField groupTextField;
     private TextField addressTextField;
     private TextField usernameTextField;
@@ -104,7 +105,18 @@ public class BridgeLinkLauncher extends Application implements Progress {
         tableButtons.getChildren().addAll(newButton, saveButton, duplicateButton, deleteButton);
         tableButtons.setAlignment(Pos.CENTER);
 
-        // Replace TableView with TreeTableView
+        // Add connection filter
+        filterField = new TextField();
+        filterField.setPromptText("Filter connections...");
+        filterField.setPrefWidth(200);
+        filterField.setMinWidth(200);
+        filterField.setMaxWidth(200);
+        filterField.textProperty().addListener((obs, oldVal, newVal) -> updateTreeTableWithFilter(newVal));
+        // Wrap filterField in an HBox to control layout
+        HBox filterBox = new HBox(filterField);
+        filterBox.setAlignment(Pos.CENTER_LEFT);
+
+        // TreeTableView setup
         connectionsTreeTableView = new TreeTableView<>();
         connectionsTreeTableView.setPlaceholder(new Label("No saved connections"));
         connectionsTreeTableView.setEditable(true);
@@ -123,6 +135,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         groupColumn.setPrefWidth(150);  // Fixed width for group names
         groupColumn.setMinWidth(100);   // Minimum to ensure readability
         groupColumn.setMaxWidth(200);   // Maximum to prevent over-expansion
+        groupColumn.setSortable(false);
 
         // Name column
         TreeTableColumn<Connection, String> nameColumn = new TreeTableColumn<>("Connections");
@@ -146,6 +159,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         });
         nameColumn.setPrefWidth(300);  // Initial preferred width (will grow)
         nameColumn.setMinWidth(150);   // Minimum for usability
+        nameColumn.setSortable(false);
         // No maxWidth - allow it to expand
         connectionsTreeTableView.setColumnResizePolicy(TreeTableView.CONSTRAINED_RESIZE_POLICY); // Ensure nameColumn takes remaining space
 
@@ -169,6 +183,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         rootTree.setExpanded(true);
         connectionsTreeTableView.setRoot(rootTree);
         connectionsTreeTableView.setShowRoot(false);
+
         updateTreeTable();
 
         // Selection model
@@ -225,7 +240,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         tableArea.getChildren().addAll(connectionsTreeTableView, rightButtons);
         HBox.setHgrow(connectionsTreeTableView, Priority.ALWAYS);
 
-        connectionsSection.getChildren().addAll(tableButtons, tableArea);
+        connectionsSection.getChildren().addAll(tableButtons, filterBox, tableArea);
 
         // Configuration Section (Modified: Java Home and Max Heap Size on same line)
         VBox configBox = new VBox(10);
@@ -332,29 +347,49 @@ public class BridgeLinkLauncher extends Application implements Progress {
     }
 
     private void updateTreeTable() {
+        updateTreeTableWithFilter(filterField != null ? filterField.getText() : "");
+    }
+
+    private void updateTreeTableWithFilter(String filter) {
         TreeItem<Connection> root = connectionsTreeTableView.getRoot();
+        if (root == null) {
+            root = new TreeItem<>(null);
+            root.setExpanded(true);
+            connectionsTreeTableView.setRoot(root);
+            connectionsTreeTableView.setShowRoot(false);
+        }
         root.getChildren().clear();
 
         Map<String, TreeItem<Connection>> groupItems = new HashMap<>();
+        String filterLower = filter.toLowerCase().trim();
 
         for (Connection conn : connectionsList) {
             String groupName = StringUtils.isBlank(conn.getGroup()) ? "Ungrouped" : conn.getGroup();
-            TreeItem<Connection> groupItem = groupItems.computeIfAbsent(groupName,
-                    k -> {
-                        Connection groupConn = new Connection(null, "", null, null, null, null, null,
-                                null, false, false, null, false, null, false, null, null, groupName);
-                        TreeItem<Connection> item = new TreeItem<>(groupConn);
-                        item.setExpanded(true);
-                        return item;
-                    });
+            String name = conn.getName() != null ? conn.getName() : "";
 
-            TreeItem<Connection> connItem = new TreeItem<>(conn);
-            groupItem.getChildren().add(connItem);
+            // Filter by name or group
+            if (filterLower.isEmpty() || name.toLowerCase().contains(filterLower) || groupName.toLowerCase().contains(filterLower)) {
+                TreeItem<Connection> groupItem = groupItems.computeIfAbsent(groupName,
+                        k -> {
+                            Connection groupConn = new Connection(null, "", null, null, null, null, null,
+                                    null, false, false, null, false, null, false, null, null, groupName);
+                            TreeItem<Connection> item = new TreeItem<>(groupConn);
+                            item.setExpanded(true);
+                            return item;
+                        });
 
-            if (!root.getChildren().contains(groupItem)) {
-                root.getChildren().add(groupItem);
+                TreeItem<Connection> connItem = new TreeItem<>(conn);
+                groupItem.getChildren().add(connItem);
+
+                if (!root.getChildren().contains(groupItem)) {
+                    root.getChildren().add(groupItem);
+                }
             }
         }
+
+        // Update placeholder
+        connectionsTreeTableView.setPlaceholder(new Label(
+                filter.isEmpty() ? "No saved connections" : "No matching connections"));
     }
 
     private void createNewConnection() {
@@ -862,5 +897,4 @@ public class BridgeLinkLauncher extends Application implements Progress {
         SSLBypass.disableSSLVerification();
         launch(args);
     }
-
 }
