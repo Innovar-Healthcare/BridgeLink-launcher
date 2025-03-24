@@ -93,6 +93,14 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
         // Table buttons
         HBox tableButtons = new HBox(10);
+
+        filterField = new TextField();
+        filterField.setPromptText("Filter connections...");
+        filterField.setPrefWidth(200);
+        filterField.setMinWidth(200);
+        filterField.setMaxWidth(200);
+        filterField.textProperty().addListener((obs, oldVal, newVal) -> updateTreeTableWithFilter(newVal));
+
         newButton = new Button("New");
         newButton.setOnAction(e -> createNewConnection());
         saveButton = new Button("Save");
@@ -102,19 +110,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
         deleteButton = new Button("Delete");
         deleteButton.setDisable(true);
         deleteButton.setOnAction(e -> deleteCurrentConnection());
-        tableButtons.getChildren().addAll(newButton, saveButton, duplicateButton, deleteButton);
-        tableButtons.setAlignment(Pos.CENTER);
-
-        // Add connection filter
-        filterField = new TextField();
-        filterField.setPromptText("Filter connections...");
-        filterField.setPrefWidth(200);
-        filterField.setMinWidth(200);
-        filterField.setMaxWidth(200);
-        filterField.textProperty().addListener((obs, oldVal, newVal) -> updateTreeTableWithFilter(newVal));
-        // Wrap filterField in an HBox to control layout
-        HBox filterBox = new HBox(filterField);
-        filterBox.setAlignment(Pos.CENTER_LEFT);
+        tableButtons.getChildren().addAll(filterField, newButton, saveButton, duplicateButton, deleteButton);
+        tableButtons.setAlignment(Pos.CENTER_LEFT);
 
         // TreeTableView setup
         connectionsTreeTableView = new TreeTableView<>();
@@ -240,7 +237,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         tableArea.getChildren().addAll(connectionsTreeTableView, rightButtons);
         HBox.setHgrow(connectionsTreeTableView, Priority.ALWAYS);
 
-        connectionsSection.getChildren().addAll(tableButtons, filterBox, tableArea);
+        connectionsSection.getChildren().addAll(tableButtons, tableArea);
 
         // Configuration Section (Modified: Java Home and Max Heap Size on same line)
         VBox configBox = new VBox(10);
@@ -344,6 +341,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
         Scene scene = new Scene(root, 800, 600);
         stage.setScene(scene);
         stage.show();
+
+        newButton.requestFocus();
     }
 
     private void updateTreeTable() {
