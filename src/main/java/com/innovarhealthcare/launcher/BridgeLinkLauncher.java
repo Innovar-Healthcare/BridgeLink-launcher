@@ -17,6 +17,8 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.util.Callback;
 import java.io.*;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
 
@@ -25,13 +27,10 @@ import javafx.collections.ObservableList;
 import javafx.scene.image.Image;
 import javafx.scene.text.Text;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.SystemUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
-//import org.apache.logging.log4j.LogManager;
-//import org.apache.logging.log4j.Logger;
 
 public class BridgeLinkLauncher extends Application implements Progress {
-    private static final boolean DEVELOP = true;
+    private static final boolean DEVELOP = false;
     private static final String VERSION = DEVELOP ? "Development 1.0.1" : "1.0.1";
     private static final Image ICON_DEFAULT = new Image("/images/logo.png");
 
@@ -64,24 +63,24 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private Thread launchThread;
     private volatile DownloadJNLP currentDownload;
     private volatile boolean isLaunching = false;
-    private String currentDir = "";
     private Stage primaryStage;
-
+    private String appDir;     // Application directory
+    private File dataFolder;   // "data" folder within appDir
+    private File cacheFolder;  // New "cache" folder within appDir
 
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
-        stage.setTitle("BridgeLink Administrator Launcher (" + VERSION + ")");
 
-        if (SystemUtils.IS_OS_MAC) {
-            currentDir = getParameters().getRaw().isEmpty() ? System.getProperty("user.dir") : getParameters().getRaw().get(0);
-        }
+        stage.setTitle("BridgeLink Administrator Launcher (" + VERSION + ")");
 
         try {
             stage.getIcons().add(ICON_DEFAULT);
         } catch (Exception e) {
             // Handle icon loading failure
         }
+
+        initializeDirectories();
 
         VBox root = new VBox(15);
         root.setPadding(new Insets(15));
@@ -343,6 +342,95 @@ public class BridgeLinkLauncher extends Application implements Progress {
         stage.show();
 
         newButton.requestFocus();
+        // Check write permissions to "data" and "cache" folders after showing the application
+        checkWritePermissions(stage);
+    }
+
+    private void initializeDirectories() {
+        // Get the application directory (where the JAR or class file resides)
+        try {
+            String jarPath = BridgeLinkLauncher.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath();
+            appDir = new File(jarPath).getParent(); // Parent directory of the JAR/class file
+            appDir = URLDecoder.decode(appDir, StandardCharsets.UTF_8.name()); // Decode path
+        } catch (Exception e) {
+            appDir = System.getProperty("user.dir"); // Fallback to user.dir if detection fails
+            System.err.println("Failed to determine application directory: " + e.getMessage());
+        }
+
+        if (!getParameters().getRaw().isEmpty()) {
+            appDir = getParameters().getRaw().get(0); // Override with first parameter if provided
+        }
+
+        // Set up data and cache folders
+        dataFolder = new File(appDir, "data");
+        cacheFolder = new File(appDir, "cache");
+    }
+
+    private void checkWritePermissions(Stage stage) {
+        // Check "data" folder
+        StringBuilder errorMessage = new StringBuilder();
+
+        if (!dataFolder.exists()) {
+            try {
+                dataFolder.mkdirs(); // Create the "data" folder if it doesn't exist
+            } catch (SecurityException e) {
+                errorMessage.append("Cannot create 'data' folder in: ").append(appDir)
+                        .append("\nError: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        if (dataFolder.exists() && !dataFolder.isDirectory()) {
+            errorMessage.append("'data' path exists but is not a directory: ")
+                    .append(dataFolder.getAbsolutePath()).append("\n");
+        } else if (dataFolder.exists()) {
+            try {
+                File tempFile = File.createTempFile("test", ".tmp", dataFolder);
+                tempFile.delete(); // Clean up
+            } catch (IOException e) {
+                errorMessage.append("No write permission in 'data' folder: ")
+                        .append(dataFolder.getAbsolutePath())
+                        .append("\nError: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        // Check "cache" folder
+        if (!cacheFolder.exists()) {
+            try {
+                cacheFolder.mkdirs(); // Create the "cache" folder if it doesn't exist
+            } catch (SecurityException e) {
+                errorMessage.append("Cannot create 'cache' folder in: ").append(appDir)
+                        .append("\nError: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        if (cacheFolder.exists() && !cacheFolder.isDirectory()) {
+            errorMessage.append("'cache' path exists but is not a directory: ")
+                    .append(cacheFolder.getAbsolutePath()).append("\n");
+        } else if (cacheFolder.exists()) {
+            try {
+                File tempFile = File.createTempFile("test", ".tmp", cacheFolder);
+                tempFile.delete(); // Clean up
+            } catch (IOException e) {
+                errorMessage.append("No write permission in 'cache' folder: ")
+                        .append(cacheFolder.getAbsolutePath())
+                        .append("\nError: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        // Show alert if there are any errors
+        if (errorMessage.length() > 0) {
+            showWritePermissionAlert(stage, errorMessage.toString());
+        }
+    }
+
+    private void showWritePermissionAlert(Stage stage, String message) {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.initOwner(stage);
+        alert.setTitle("Write Permission Error");
+        alert.setHeaderText("Cannot write to required folders");
+        alert.setContentText(message + "\nSome features (e.g., saving connections or caching) may not work. " +
+                "Please ensure the 'data' and 'cache' folders are writable.");
+        alert.showAndWait();
     }
 
     private void updateTreeTable() {
@@ -567,7 +655,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 String host = addressTextField.getText();
                 updateProgressText("Downloading JNLP from " + host);
 
-                DownloadJNLP download = new DownloadJNLP(host, currentDir);
+                DownloadJNLP download = new DownloadJNLP(host, cacheFolder);
                 currentDownload = download;
 
                 JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
@@ -743,28 +831,26 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private List<Connection> loadConnections() {
         List<Connection> connections = new ArrayList<>();
-        String pathName = currentDir.isEmpty() ? "data/connections.json" : currentDir + "/data/connections.json";
-        File connectionsFile = new File(pathName);
+        File connectionsFile = new File(dataFolder, "connections.json"); // Use dataFolder directly
         if (connectionsFile.exists()) {
             try {
                 ObjectMapper objectMapper = new ObjectMapper();
                 connections = objectMapper.readValue(connectionsFile, new TypeReference<List<Connection>>() {});
             } catch (IOException e) {
-                System.out.println("Unable to load connections from file. Error: " + e.getMessage());
-//                showAlert("Error", "Unable to load connections from file. Error: " + e.getMessage());
+                System.out.println("Unable to load connections from file: " + connectionsFile.getAbsolutePath() +
+                        ". Error: " + e.getMessage());
             }
         }
         return connections;
     }
 
     private void saveConnections() {
-        String pathName = currentDir.isEmpty() ? "data" : currentDir + "/data";
-        File directory = new File(pathName);
-        if (!directory.exists()) {
-            directory.mkdirs();
+        // Ensure the "data" folder exists
+        if (!dataFolder.exists()) {
+            dataFolder.mkdirs(); // Create the "data" folder if it doesn't exist
         }
 
-        File connectionsFile = new File(directory, "connections.json");
+        File connectionsFile = new File(dataFolder, "connections.json");
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             objectMapper.writeValue(connectionsFile, this.connectionsList);
