@@ -837,7 +837,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 ObjectMapper objectMapper = new ObjectMapper();
                 connections = objectMapper.readValue(connectionsFile, new TypeReference<List<Connection>>() {});
             } catch (IOException e) {
-                System.out.println("Unable to load connections from file: " + connectionsFile.getAbsolutePath() +
+                showAlert("Unable to load connections from file: " + connectionsFile.getAbsolutePath() +
                         ". Error: " + e.getMessage());
             }
         }
