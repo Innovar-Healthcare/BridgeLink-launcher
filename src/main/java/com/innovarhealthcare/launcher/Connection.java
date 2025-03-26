@@ -15,13 +15,15 @@ public class Connection {
     private boolean sslCipherSuitesCustom;
     private String sslCipherSuites;
     private boolean useLegacyDHSettings;
-
+    private String username;
+    private String password;
+    private String group;
     // Constructors, getters, and setters
     public Connection() {}
 
     public Connection(String id, String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
                       String heapSize, String icon, boolean showJavaConsole, boolean sslProtocolsCustom, String sslProtocols,
-                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings) {
+                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group) {
         this.id = id;
         this.name = name;
         this.address = address;
@@ -36,9 +38,15 @@ public class Connection {
         this.sslCipherSuitesCustom = sslCipherSuitesCustom;
         this.sslCipherSuites = sslCipherSuites;
         this.useLegacyDHSettings = useLegacyDHSettings;
+        this.username = username;
+        this.password = password;
+        this.group = group;
     }
 
     public String getId() { return id; }
+    public void setId(String id) {
+        this.id = id;
+    }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
     public String getAddress() { return address; }
@@ -65,4 +73,16 @@ public class Connection {
     public void setSslCipherSuites(String sslCipherSuites) { this.sslCipherSuites = sslCipherSuites; }
     public boolean isUseLegacyDHSettings() { return useLegacyDHSettings; }
     public void setUseLegacyDHSettings(boolean useLegacyDHSettings) { this.useLegacyDHSettings = useLegacyDHSettings; }
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+    public String getPassword() { return password; }
+    public void setPassword(String password) { this.password = password; }
+
+    public String getGroup() {
+        return group;
+    }
+
+    public void setGroup(String group) {
+        this.group = group;
+    }
 }
