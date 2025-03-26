@@ -1,33 +1,34 @@
 package com.innovarhealthcare.launcher;
+
+import com.innovarhealthcare.launcher.interfaces.Progress;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.innovarhealthcare.launcher.interfaces.Progress;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.value.ObservableValue;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
-import javafx.scene.control.cell.TextFieldTreeTableCell;
+import javafx.scene.control.cell.TextFieldTreeCell;
 import javafx.scene.layout.*;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
-import javafx.util.Callback;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
+import javafx.scene.image.Image;
+import javafx.scene.text.Text;
+import javafx.util.StringConverter;
+
 import java.io.*;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
-
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-import javafx.scene.image.Image;
-import javafx.scene.text.Text;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.exception.ExceptionUtils;
 
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final boolean DEVELOP = false;
@@ -36,8 +37,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private final ObservableList<Connection> connectionsList = FXCollections.observableArrayList();
 
-    private TreeTableView<Connection> connectionsTreeTableView;
-    private TreeTableView.TreeTableViewSelectionModel<Connection> treeSelectionModel;
+    private TreeView<Connection> connectionsTreeView;
+    private SelectionModel<TreeItem<Connection>> treeSelectionModel;
 
     private TextField filterField;
     private TextField groupTextField;
@@ -48,7 +49,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private ComboBox<BundledJava> bundledJavaCombo;
     private ComboBox<HeapMemory> heapSizeCombo;
     private CheckBox showConsoleCheckBox;
-    private Separator separator2;
     private Text progressText;
     private ProgressBar progressBar;
     private ProgressIndicator progressIndicator;
@@ -71,7 +71,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
-
         stage.setTitle("BridgeLink Administrator Launcher (" + VERSION + ")");
 
         try {
@@ -85,7 +84,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         VBox root = new VBox(15);
         root.setPadding(new Insets(15));
 
-        // Connections Section with Buttons (unchanged)
+        // Connections Section with Buttons
         VBox connectionsSection = new VBox(20);
         connectionsSection.setPadding(new Insets(10));
         connectionsSection.setAlignment(Pos.TOP_CENTER);
@@ -98,7 +97,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         filterField.setPrefWidth(200);
         filterField.setMinWidth(200);
         filterField.setMaxWidth(200);
-        filterField.textProperty().addListener((obs, oldVal, newVal) -> updateTreeTableWithFilter(newVal));
+        filterField.textProperty().addListener((obs, oldVal, newVal) -> updateTreeViewWithFilter(newVal));
 
         newButton = new Button("New");
         newButton.setOnAction(e -> createNewConnection());
@@ -112,79 +111,74 @@ public class BridgeLinkLauncher extends Application implements Progress {
         tableButtons.getChildren().addAll(filterField, newButton, saveButton, duplicateButton, deleteButton);
         tableButtons.setAlignment(Pos.CENTER_LEFT);
 
-        // TreeTableView setup
-        connectionsTreeTableView = new TreeTableView<>();
-        connectionsTreeTableView.setPlaceholder(new Label("No saved connections"));
-        connectionsTreeTableView.setEditable(true);
-        VBox.setVgrow(connectionsTreeTableView, Priority.ALWAYS);
+        // TreeView setup
+        connectionsTreeView = new TreeView<>();
+        connectionsTreeView.setEditable(true);
+        VBox.setVgrow(connectionsTreeView, Priority.ALWAYS);
 
-        // Group column
-        TreeTableColumn<Connection, String> groupColumn = new TreeTableColumn<>("Group");
-        groupColumn.setCellValueFactory(new Callback<TreeTableColumn.CellDataFeatures<Connection, String>, ObservableValue<String>>() {
-            @Override
-            public ObservableValue<String> call(TreeTableColumn.CellDataFeatures<Connection, String> cellData) {
-                Connection conn = cellData.getValue().getValue();
-                String groupValue = (conn != null && conn.getGroup() != null) ? conn.getGroup() : "";
-                return new SimpleStringProperty(groupValue);
+        // Cell factory for editing names
+        connectionsTreeView.setCellFactory(treeView -> {
+            TreeCell<Connection> cell = new TextFieldTreeCell<>(new StringConverter<Connection>() {
+                @Override
+                public String toString(Connection conn) {
+                    if (conn == null) return "";
+                    if (conn.getAddress() != null) { // Connection node
+                        return conn.getName() != null ? conn.getName() : "";
+                    } else { // Group node
+                        return conn.getGroup() != null ? conn.getGroup() : "Ungrouped";
+                    }
+                }
+
+                @Override
+                public Connection fromString(String string) {
+                    TreeItem<Connection> item = connectionsTreeView.getSelectionModel().getSelectedItem();
+                    if (item != null && item.getValue() != null && item.getValue().getAddress() != null) {
+                        Connection conn = item.getValue();
+                        conn.setName(string);
+                        return conn;
+                    }
+                    return null;
+                }
+            });
+            cell.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && !cell.isEmpty()) {
+                    Connection conn = cell.getItem();
+                    if (conn != null && conn.getAddress() != null) { // Only edit connections, not groups
+                        cell.startEdit();
+                    }
+                }
+            });
+            return cell;
+        });
+
+        // Handle edit commit
+        connectionsTreeView.setOnEditCommit(event -> {
+            Connection conn = event.getNewValue();
+            if (conn != null && conn.getAddress() != null) {
+                String newName = StringUtils.trim(conn.getName());
+                boolean exists = connectionsList.stream().anyMatch(c ->
+                        !StringUtils.equals(c.getId(), conn.getId()) &&
+                                StringUtils.equalsIgnoreCase(c.getName(), newName));
+                if (!exists) {
+                    conn.setName(newName);
+                    saveConnections();
+                }
+                updateTreeView();
             }
         });
-        groupColumn.setPrefWidth(150);  // Fixed width for group names
-        groupColumn.setMinWidth(100);   // Minimum to ensure readability
-        groupColumn.setMaxWidth(200);   // Maximum to prevent over-expansion
-        groupColumn.setSortable(false);
 
-        // Name column
-        TreeTableColumn<Connection, String> nameColumn = new TreeTableColumn<>("Connections");
-        nameColumn.setCellValueFactory(new Callback<TreeTableColumn.CellDataFeatures<Connection, String>, ObservableValue<String>>() {
-            @Override
-            public ObservableValue<String> call(TreeTableColumn.CellDataFeatures<Connection, String> cellData) {
-                Connection conn = cellData.getValue().getValue();
-                String nameValue = (conn != null && conn.getName() != null) ? conn.getName() : "";
-                return new SimpleStringProperty(nameValue);
-            }
-        });
-        nameColumn.setCellFactory(TextFieldTreeTableCell.forTreeTableColumn());
-        nameColumn.setOnEditCommit(event -> {
-            String newName = StringUtils.trim(event.getNewValue());
-            boolean exists = connectionsList.stream().anyMatch(conn ->
-                    !StringUtils.equals(conn.getId(), event.getRowValue().getValue().getId()) &&
-                            StringUtils.equalsIgnoreCase(conn.getName(), newName));
-            if (!exists) event.getRowValue().getValue().setName(newName);
-            connectionsTreeTableView.refresh();
-            saveConnections();
-        });
-        nameColumn.setPrefWidth(300);  // Initial preferred width (will grow)
-        nameColumn.setMinWidth(150);   // Minimum for usability
-        nameColumn.setSortable(false);
-        // No maxWidth - allow it to expand
-        connectionsTreeTableView.setColumnResizePolicy(TreeTableView.CONSTRAINED_RESIZE_POLICY); // Ensure nameColumn takes remaining space
-
-        // Id column
-        TreeTableColumn<Connection, String> idColumn = new TreeTableColumn<>("Id");
-        idColumn.setCellValueFactory(new Callback<TreeTableColumn.CellDataFeatures<Connection, String>, ObservableValue<String>>() {
-            @Override
-            public ObservableValue<String> call(TreeTableColumn.CellDataFeatures<Connection, String> cellData) {
-                Connection conn = cellData.getValue().getValue();
-                String idValue = (conn != null && conn.getId() != null) ? conn.getId() : "";
-                return new SimpleStringProperty(idValue);
-            }
-        });
-        idColumn.setVisible(false);
-
-        connectionsTreeTableView.getColumns().addAll(groupColumn, nameColumn, idColumn);
         connectionsList.addAll(loadConnections());
 
         // Build tree structure
-        TreeItem<Connection> rootTree = new TreeItem<>(null); // Root is invisible
+        TreeItem<Connection> rootTree = new TreeItem<>(null);
         rootTree.setExpanded(true);
-        connectionsTreeTableView.setRoot(rootTree);
-        connectionsTreeTableView.setShowRoot(false);
+        connectionsTreeView.setRoot(rootTree);
+        connectionsTreeView.setShowRoot(false);
 
-        updateTreeTable();
+        updateTreeView();
 
         // Selection model
-        treeSelectionModel = connectionsTreeTableView.getSelectionModel();
-        treeSelectionModel.setSelectionMode(SelectionMode.SINGLE);
+        treeSelectionModel = connectionsTreeView.getSelectionModel(); // Corrected type usage
         treeSelectionModel.selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             Connection selectedConn = newVal != null ? newVal.getValue() : null;
             boolean isConnection = selectedConn != null && selectedConn.getAddress() != null;
@@ -194,7 +188,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 addressTextField.setText(selectedConn.getAddress());
                 updateUIFromConnection(selectedConn);
             } else {
-                // Clear fields when a group is selected
                 groupTextField.setText("");
                 addressTextField.setText("");
                 usernameTextField.setText("");
@@ -204,10 +197,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 heapSizeCombo.getSelectionModel().select(1);
             }
 
-            // always disable Save button
             saveButton.setDisable(true);
-
-            // Disable Duplicate, Delete, Launch and input fields when a group is selected
             duplicateButton.setDisable(!isConnection);
             deleteButton.setDisable(!isConnection);
             launchButton.setDisable(!isConnection);
@@ -222,19 +212,19 @@ public class BridgeLinkLauncher extends Application implements Progress {
             exportButton.setDisable(connectionsList.isEmpty());
         });
 
-        // right of layout button
+        // Right buttons
         VBox rightButtons = new VBox(10);
         importButton = new Button("Import");
         importButton.setOnAction(e -> importConnections());
         exportButton = new Button("Export");
         exportButton.setOnAction(e -> exportConnections());
-        exportButton.setDisable(true); // Disabled until a connection is selected
+        exportButton.setDisable(true);
         rightButtons.getChildren().addAll(importButton, exportButton);
         rightButtons.setAlignment(Pos.TOP_CENTER);
 
         HBox tableArea = new HBox(10);
-        tableArea.getChildren().addAll(connectionsTreeTableView, rightButtons);
-        HBox.setHgrow(connectionsTreeTableView, Priority.ALWAYS);
+        tableArea.getChildren().addAll(connectionsTreeView, rightButtons);
+        HBox.setHgrow(connectionsTreeView, Priority.ALWAYS);
 
         connectionsSection.getChildren().addAll(tableButtons, tableArea);
 
@@ -302,7 +292,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, consoleRow);
 
         // Progress Section (unchanged)
-        separator2 = new Separator();
+        Separator separator = new Separator();
         progressBar = new ProgressBar(0.0);
         progressBar.setMaxWidth(Double.MAX_VALUE);
         launchButton = new Button("Launch");
@@ -317,7 +307,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         progressIndicator = new ProgressIndicator(-1.0);
         progressIndicator.setPrefHeight(20.0);
         progressText = new Text("Requesting main JNLP...");
-        VBox progressBox = new VBox(10, separator2, progressBarBox, progressIndicator, progressText);
+        VBox progressBox = new VBox(10, separator, progressBarBox, progressIndicator, progressText);
         setProgressControlsVisible(false);
 
         // Bottom Section (unchanged)
@@ -331,7 +321,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
         // Select first connection
         if (!connectionsList.isEmpty()) {
-            TreeItem<Connection> firstGroup = connectionsTreeTableView.getRoot().getChildren().get(0);
+            TreeItem<Connection> firstGroup = connectionsTreeView.getRoot().getChildren().get(0);
             if (firstGroup != null && !firstGroup.getChildren().isEmpty()) {
                 treeSelectionModel.select(firstGroup.getChildren().get(0));
             }
@@ -342,6 +332,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         stage.show();
 
         newButton.requestFocus();
+
         // Check write permissions to "data" and "cache" folders after showing the application
         checkWritePermissions(stage);
     }
@@ -433,17 +424,17 @@ public class BridgeLinkLauncher extends Application implements Progress {
         alert.showAndWait();
     }
 
-    private void updateTreeTable() {
-        updateTreeTableWithFilter(filterField != null ? filterField.getText() : "");
+    private void updateTreeView() {
+        updateTreeViewWithFilter(filterField != null ? filterField.getText() : "");
     }
 
-    private void updateTreeTableWithFilter(String filter) {
-        TreeItem<Connection> root = connectionsTreeTableView.getRoot();
+    private void updateTreeViewWithFilter(String filter) {
+        TreeItem<Connection> root = connectionsTreeView.getRoot();
         if (root == null) {
             root = new TreeItem<>(null);
             root.setExpanded(true);
-            connectionsTreeTableView.setRoot(root);
-            connectionsTreeTableView.setShowRoot(false);
+            connectionsTreeView.setRoot(root);
+            connectionsTreeView.setShowRoot(false);
         }
         root.getChildren().clear();
 
@@ -454,7 +445,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
             String groupName = StringUtils.isBlank(conn.getGroup()) ? "Ungrouped" : conn.getGroup();
             String name = conn.getName() != null ? conn.getName() : "";
 
-            // Filter by name or group
             if (filterLower.isEmpty() || name.toLowerCase().contains(filterLower) || groupName.toLowerCase().contains(filterLower)) {
                 TreeItem<Connection> groupItem = groupItems.computeIfAbsent(groupName,
                         k -> {
@@ -473,10 +463,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 }
             }
         }
-
-        // Update placeholder
-        connectionsTreeTableView.setPlaceholder(new Label(
-                filter.isEmpty() ? "No saved connections" : "No matching connections"));
     }
 
     private void createNewConnection() {
@@ -490,15 +476,12 @@ public class BridgeLinkLauncher extends Application implements Progress {
             TextInputDialog dialog = new TextInputDialog(newName);
             dialog.setTitle("New Connection");
             dialog.setHeaderText("Enter connection name:");
-
-            // Set an icon for the dialog's title bar
             Stage dialogStage = (Stage) dialog.getDialogPane().getScene().getWindow();
-            dialogStage.getIcons().add(ICON_DEFAULT); // Replace with your image path
+            dialogStage.getIcons().add(ICON_DEFAULT);
 
             dialog.showAndWait().ifPresent(name -> {
-                addConnectionWithName(name); // Add the new connection
-                updateTreeTable();           // Rebuild the tree
-                // Find and select the new connection
+                addConnectionWithName(name);
+                updateTreeView();
                 Connection newConn = connectionsList.stream()
                         .filter(conn -> conn.getName().equals(name))
                         .findFirst()
@@ -526,17 +509,16 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void saveCurrentConnection() {
         if (!isLaunching) {
-            TreeItem<Connection> selectedItem = connectionsTreeTableView.getSelectionModel().getSelectedItem();
+            TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
             if (selectedItem != null && selectedItem.getValue().getAddress() != null) {
                 Connection currentConnection = selectedItem.getValue();
 
                 updateConnectionFromUI(currentConnection);
-                updateTreeTable();
-                connectionsTreeTableView.refresh();
+                updateTreeView();
+                connectionsTreeView.refresh();
                 saveButton.setDisable(true);
                 saveConnections();
 
-                // Re-select the saved connection
                 TreeItem<Connection> newSelectedItem = findTreeItem(currentConnection);
                 if (newSelectedItem != null) {
                     treeSelectionModel.select(newSelectedItem);
@@ -550,9 +532,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
             TextInputDialog dialog = new TextInputDialog("New Connection");
             dialog.setTitle("Duplicate Connection");
             dialog.setHeaderText("Enter new connection name:");
-            // Set an icon for the dialog's title bar
             Stage dialogStage = (Stage) dialog.getDialogPane().getScene().getWindow();
-            dialogStage.getIcons().add(ICON_DEFAULT); // Replace with your image path
+            dialogStage.getIcons().add(ICON_DEFAULT);
 
             dialog.showAndWait().ifPresent(name -> {
                 if (StringUtils.isNotBlank(name)) {
@@ -561,15 +542,13 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     while (nameExists(finalName)) {
                         finalName = name + " Copy " + cnt++;
                     }
-                    // [Name conflict resolution]
                     Connection newConn = new Connection(UUID.randomUUID().toString(), finalName,
                             addressTextField.getText(), getJavaHome(), bundledJavaCombo.getValue().toString(),
                             "", heapSizeCombo.getValue().toString(), "", showConsoleCheckBox.isSelected(),
                             false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText());
                     connectionsList.add(newConn);
-                    updateTreeTable(); // Update tree after adding
+                    updateTreeView();
                     saveConnections();
-                    // Select new connection
                     treeSelectionModel.select(findTreeItem(newConn));
                 }
             });
@@ -578,10 +557,10 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void deleteCurrentConnection() {
         if (!isLaunching) {
-            TreeItem<Connection> selectedItem = connectionsTreeTableView.getSelectionModel().getSelectedItem();
-            if (selectedItem != null && selectedItem.getValue().getAddress() != null) { // Ensure it's a connection
+            TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+            if (selectedItem != null && selectedItem.getValue().getAddress() != null) {
                 Connection selected = selectedItem.getValue();
-                String originalGroup = StringUtils.isBlank(selected.getGroup()) ? "Ungrouped" : selected.getGroup(); // Capture group before deletion
+                String originalGroup = StringUtils.isBlank(selected.getGroup()) ? "Ungrouped" : selected.getGroup();
 
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
                 alert.setTitle("Delete Connection");
@@ -592,14 +571,12 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 alert.showAndWait().ifPresent(response -> {
                     if (response == ButtonType.OK) {
                         connectionsList.remove(selected);
-                        updateTreeTable();
+                        updateTreeView();
                         saveConnections();
 
-                        // Selection logic after deletion
                         if (!connectionsList.isEmpty()) {
-                            // Find the new group item matching the original group
                             TreeItem<Connection> newGroupItem = null;
-                            for (TreeItem<Connection> groupItem : connectionsTreeTableView.getRoot().getChildren()) {
+                            for (TreeItem<Connection> groupItem : connectionsTreeView.getRoot().getChildren()) {
                                 if (StringUtils.equals(groupItem.getValue().getGroup(), originalGroup)) {
                                     newGroupItem = groupItem;
                                     break;
@@ -607,11 +584,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
                             }
 
                             if (newGroupItem != null && !newGroupItem.getChildren().isEmpty()) {
-                                // Select the first item in the same group
                                 treeSelectionModel.select(newGroupItem.getChildren().get(0));
-                            } else if (!connectionsTreeTableView.getRoot().getChildren().isEmpty()) {
-                                // Fall back to first item in first group if original group is gone
-                                TreeItem<Connection> firstGroup = connectionsTreeTableView.getRoot().getChildren().get(0);
+                            } else if (!connectionsTreeView.getRoot().getChildren().isEmpty()) {
+                                TreeItem<Connection> firstGroup = connectionsTreeView.getRoot().getChildren().get(0);
                                 if (!firstGroup.getChildren().isEmpty()) {
                                     treeSelectionModel.select(firstGroup.getChildren().get(0));
                                 } else {
@@ -621,7 +596,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
                                 treeSelectionModel.clearSelection();
                             }
                         } else {
-                            // List is empty, clear selection
                             treeSelectionModel.clearSelection();
                         }
                     }
@@ -631,7 +605,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     }
 
     private TreeItem<Connection> findTreeItem(Connection conn) {
-        for (TreeItem<Connection> groupItem : connectionsTreeTableView.getRoot().getChildren()) {
+        for (TreeItem<Connection> groupItem : connectionsTreeView.getRoot().getChildren()) {
             for (TreeItem<Connection> item : groupItem.getChildren()) {
                 if (item.getValue() == conn) return item;
             }
@@ -742,7 +716,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     connectionsList.add(conn);
                 }
 
-                updateTreeTable();
+                updateTreeView();
                 saveConnections();
             } catch (IOException e) {
                 showAlert("Failed to import connections: " + e.getMessage());
@@ -773,7 +747,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     }
 
     private void setUIEnabled(boolean enabled) {
-        TreeItem<Connection> selectedItem = connectionsTreeTableView.getSelectionModel().getSelectedItem();
+        TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
         boolean isConnectionSelected = selectedItem != null && selectedItem.getValue() != null &&
                 selectedItem.getValue().getAddress() != null;
         boolean finalEnabled = enabled && isConnectionSelected;
@@ -797,7 +771,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         newButton.setDisable(!launchEnabled);
         importButton.setDisable(!launchEnabled);
         exportButton.setDisable(!launchEnabled || connectionsList.isEmpty());
-        connectionsTreeTableView.setDisable(!launchEnabled);
+        connectionsTreeView.setDisable(!launchEnabled);
     }
 
     private void resetUI() {
@@ -868,7 +842,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings,
                 username, password, group);
         this.connectionsList.add(conn);
-        updateTreeTable(); // Update tree after adding
+        updateTreeView(); // Update tree after adding
         saveConnections();
         this.treeSelectionModel.select(findTreeItem(conn));
         this.saveButton.setDisable(true);
@@ -922,7 +896,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             return;
         }
 
-        TreeItem<Connection> selectedItem = connectionsTreeTableView.getSelectionModel().getSelectedItem();
+        TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
         if (selectedItem == null) {
             this.saveButton.setDisable(true);
             return;
