@@ -1,18 +1,25 @@
 package com.innovarhealthcare.launcher;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.SystemUtils;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.InputStream;
+
 import java.util.ArrayList;
 import java.util.List;
 
 public class ProcessLauncher {
-    public void launch(JavaConfig javaConfig, CodeBase codeBase, boolean isShowConsole) throws Exception{
+    public void launch(JavaConfig javaConfig, Credential credential, CodeBase codeBase, boolean isShowConsole) throws Exception{
         List<String> command = new ArrayList<>();
         command.add(javaConfig.getJavaHomeBuilder());
         command.add(javaConfig.getMaxHeapSizeBuilder());
 
         if (SystemUtils.IS_OS_MAC){
+            command.add("-Xdock:icon=icon.png");
+            command.add("-Xdock:name=BridgeLink Administrator Launcher");
             if("Java 17".equals(javaConfig.getJavaHome())){
                 command.add("--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED");
             }
@@ -44,6 +51,15 @@ public class ProcessLauncher {
         command.add(String.join(File.pathSeparator, codeBase.getClasspath()));
         command.add(codeBase.getMainClass());
         command.add(codeBase.getHost());
+        command.add(codeBase.getVersion());
+
+        if(StringUtils.isNotBlank(credential.getUsername())){
+            command.add(credential.getUsername());
+        }
+
+        if(StringUtils.isNotBlank(credential.getPassword())){
+            command.add(credential.getPassword());
+        }
 
         ProcessBuilder targetPb = new ProcessBuilder(command);
         targetPb.redirectErrorStream(true);
