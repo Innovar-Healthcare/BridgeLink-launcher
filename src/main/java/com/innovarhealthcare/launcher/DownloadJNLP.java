@@ -11,7 +11,15 @@ import org.w3c.dom.NodeList;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
-import java.io.*;
+
+import java.io.File;
+import java.io.InputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.FileInputStream;
+import java.io.PrintWriter;
+import java.io.FileWriter;
+
 import java.net.URL;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
@@ -30,13 +38,16 @@ import java.util.Map;
 public class DownloadJNLP {
     private static final String LOG_FILE = "launcher-debug.log";
     private static final boolean DEBUG = false;
-    private final String CACHED_FOLDER;
+    private final File cacheFolder;
     private String host = "";
     private volatile boolean cancelled = false;
 
-    public DownloadJNLP(String host, String currentDir) {
+    public DownloadJNLP(String host, File cacheFolder) {
+        if (host.endsWith("/")) {
+            host = host.substring(0, host.length() - 1);
+        }
         this.host = host;
-        this.CACHED_FOLDER =  currentDir.isEmpty() ? "cache" :currentDir + "/cache";
+        this.cacheFolder = cacheFolder;
     }
 
     public CodeBase handle(Progress progress) throws  Exception{
@@ -48,6 +59,7 @@ public class DownloadJNLP {
         log("🔍 Fetching main JNLP from: " + jnlpUrl);
 
         List<File> localJars = new ArrayList<>();
+        String bridgeVersion = "unknown";
         try {
             URL url = new URL(jnlpUrl);
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -55,7 +67,6 @@ public class DownloadJNLP {
             Document doc = builder.parse(url.openStream());
 
             List<String> coreJars = new ArrayList<>();
-            String bridgeVersion = "unknown";
 
             // Extract core JARs
             NodeList jarList = doc.getElementsByTagName("jar");
@@ -94,7 +105,7 @@ public class DownloadJNLP {
             List<ExtensionInfo> listExtensions = new ArrayList<>();
             for (String extJnlpUrl : extensionJnlpUrls) {
                 checkCancelled("parseExtensionJnlp");
-                listExtensions.add(parseExtensionJnlp(extJnlpUrl, bridgeVersion));
+                listExtensions.add(parseExtensionJnlp(extJnlpUrl));
             }
 
             // Download & Launch Mirth
@@ -111,10 +122,10 @@ public class DownloadJNLP {
             classpath.add(jar.getAbsolutePath());
         }
 
-        return new CodeBase(classpath,"com.mirth.connect.client.ui.Mirth", host);
+        return new CodeBase(classpath,"com.mirth.connect.client.ui.Mirth", host, bridgeVersion);
     }
 
-    private ExtensionInfo parseExtensionJnlp(String extJnlpUrl, String bridgeVersion) {
+    private ExtensionInfo parseExtensionJnlp(String extJnlpUrl) {
         log("🔍 Fetching Extension JNLP: " + extJnlpUrl);
 
         try {
@@ -123,11 +134,7 @@ public class DownloadJNLP {
             DocumentBuilder builder = factory.newDocumentBuilder();
             Document doc = builder.parse(url.openStream());
 
-
             String extensionName = new File(new URL(extJnlpUrl).getPath()).getName().replace(".jnlp", "");
-            String extensionFolder = CACHED_FOLDER + "/" + bridgeVersion + "/extensions/" + extensionName;
-            new File(extensionFolder).mkdirs();
-
             Map<String, String> mapJars = new HashMap<>();
 
             NodeList jarList = doc.getElementsByTagName("jar");
@@ -154,11 +161,12 @@ public class DownloadJNLP {
         checkCancelled("download start");
 
         String baseUrl = jnlpUrl.substring(0, jnlpUrl.indexOf("/webstart") + 9); // Ensure base URL includes `/webstart`
-        String cacheDir = CACHED_FOLDER +"/" + bridgeVersion;
-        String cacheCoreDir = cacheDir + "/core";
-        String cacheExtensionsDir = cacheDir + "/extensions";
 
-        new File(cacheCoreDir).mkdirs(); // Ensure core directory exists
+        String path = bridgeVersion + "/core";
+        File coreFolder = new File(cacheFolder, path);
+        if (!coreFolder.exists()) {
+            coreFolder.mkdirs(); // Ensure core directory exists
+        }
 
         List<File> localJars = new ArrayList<>();
         int numOfJars = coreJars.size() + listExtensions.size();
@@ -168,7 +176,7 @@ public class DownloadJNLP {
         for (String jar : coreJars) {
             checkCancelled("core JAR download");
             String correctedJarUrl = baseUrl + "/client-lib/" + new File(jar).getName();
-            File localFile = new File(cacheCoreDir, new File(jar).getName());
+            File localFile = new File(coreFolder, new File(jar).getName());
 
             progress.updateProgressText("Downloading Core JAR " + jar + "...");
             log("⬇️ Downloading Core JAR: " + correctedJarUrl);
@@ -190,7 +198,12 @@ public class DownloadJNLP {
             checkCancelled("extension JAR download");
 
             String extensionName = jar.getName();
-            String extensionFolder = cacheExtensionsDir + "/" + extensionName;
+            String extPath = bridgeVersion + "/extensions/" + extensionName;
+            File extensionFolder = new File(cacheFolder, extPath);
+            if (!extensionFolder.exists()) {
+                extensionFolder.mkdirs(); // Create the "extensionFolder" folder if it doesn't exist
+            }
+
             Map<String, String> mapJars = jar.getMapJars();
 
             cntNum += 1;

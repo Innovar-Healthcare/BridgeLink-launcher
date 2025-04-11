@@ -1,49 +1,82 @@
 package com.innovarhealthcare.launcher;
+
+import com.innovarhealthcare.launcher.interfaces.Progress;
+
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.innovarhealthcare.launcher.interfaces.Progress;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.exception.ExceptionUtils;
 
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
-import javafx.scene.control.*;
-import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.control.cell.TextFieldTableCell;
-import javafx.scene.layout.*;
-import javafx.stage.Stage;
-import java.io.*;
-import java.util.*;
+import javafx.scene.control.TreeView;
+import javafx.scene.control.TreeItem;
+import javafx.scene.control.SelectionModel;
+import javafx.scene.control.TextField;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.Button;
+import javafx.scene.control.ComboBox;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.TreeCell;
+import javafx.scene.control.Label;
+import javafx.scene.control.Separator;
+import javafx.scene.control.Alert;
+import javafx.scene.control.TextInputDialog;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.cell.TextFieldTreeCell;
+import javafx.scene.layout.VBox;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
+import javafx.scene.layout.Priority;
+import javafx.scene.image.Image;
+import javafx.scene.text.Text;
 
+import javafx.stage.FileChooser;
+import javafx.stage.Stage;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.scene.image.Image;
-import javafx.scene.image.ImageView;
-import javafx.scene.text.Text;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.SystemUtils;
-import org.apache.commons.lang3.exception.ExceptionUtils;
+
+import javafx.util.StringConverter;
+
+import java.io.File;
+import java.io.IOException;
+
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+
+import java.util.Map;
+import java.util.HashMap;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.UUID;
 
 public class BridgeLinkLauncher extends Application implements Progress {
-    private static final String VERSION = "1.0.0";
-    private static final Image ICON_DEFAULT = new Image("/images/launcher_32.png");
+    private static final boolean DEVELOP = false;
+    private static final String VERSION = DEVELOP ? "Development 1.0.1" : "1.0.1";
+    private static final Image ICON_DEFAULT = new Image("/images/logo.png");
 
     private final ObservableList<Connection> connectionsList = FXCollections.observableArrayList();
 
-    private TableView<Connection> connectionsTableView;
-    private TableView.TableViewSelectionModel<Connection> tableSelectionModel;
+    private TreeView<Connection> connectionsTreeView;
+    private SelectionModel<TreeItem<Connection>> treeSelectionModel;
 
-    private Label addressLabel;
+    private TextField filterField;
+    private TextField groupTextField;
     private TextField addressTextField;
+    private TextField usernameTextField;
+    private PasswordField passwordField;
     private Button launchButton;
-    private Label javaHomeLabel;
     private ComboBox<BundledJava> bundledJavaCombo;
-    private Label heapSizeLabel;
     private ComboBox<HeapMemory> heapSizeCombo;
-    private Label consoleLabel;
     private CheckBox showConsoleCheckBox;
-    private Separator separator2;
     private Text progressText;
     private ProgressBar progressBar;
     private ProgressIndicator progressIndicator;
@@ -51,23 +84,22 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private CheckBox closeWindowCheckBox;
     private Button newButton;
     private Button saveButton;
-    private Button saveAsButton;
+    private Button duplicateButton;
     private Button deleteButton;
+    private Button importButton;
+    private Button exportButton;
     private Thread launchThread;
     private volatile DownloadJNLP currentDownload;
     private volatile boolean isLaunching = false;
-    private String currentDir = "";
     private Stage primaryStage;
-
+    private String appDir;     // Application directory
+    private File dataFolder;   // "data" folder within appDir
+    private File cacheFolder;  // New "cache" folder within appDir
 
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
         stage.setTitle("BridgeLink Administrator Launcher (" + VERSION + ")");
-
-        if (SystemUtils.IS_OS_MAC) {
-            currentDir = getParameters().getRaw().isEmpty() ? System.getProperty("user.dir") : getParameters().getRaw().get(0);
-        }
 
         try {
             stage.getIcons().add(ICON_DEFAULT);
@@ -75,103 +107,196 @@ public class BridgeLinkLauncher extends Application implements Progress {
             // Handle icon loading failure
         }
 
+        initializeDirectories();
+
         VBox root = new VBox(15);
         root.setPadding(new Insets(15));
 
-        // Connections Section with Buttons (unchanged)
+        // Connections Section with Buttons
         VBox connectionsSection = new VBox(20);
         connectionsSection.setPadding(new Insets(10));
+        connectionsSection.setAlignment(Pos.TOP_CENTER);
+
+        // Table buttons
         HBox tableButtons = new HBox(10);
+
+        filterField = new TextField();
+        filterField.setPromptText("Filter connections...");
+        filterField.setPrefWidth(200);
+        filterField.setMinWidth(200);
+        filterField.setMaxWidth(200);
+        filterField.textProperty().addListener((obs, oldVal, newVal) -> updateTreeViewWithFilter(newVal));
+
         newButton = new Button("New");
         newButton.setOnAction(e -> createNewConnection());
         saveButton = new Button("Save");
         saveButton.setOnAction(e -> saveCurrentConnection());
-        saveAsButton = new Button("Save As...");
-        saveAsButton.setOnAction(e -> saveAsNewConnection());
+        duplicateButton = new Button("Duplicate");
+        duplicateButton.setOnAction(e -> duplicateConnection());
         deleteButton = new Button("Delete");
         deleteButton.setDisable(true);
         deleteButton.setOnAction(e -> deleteCurrentConnection());
-        tableButtons.getChildren().addAll(newButton, saveButton, saveAsButton, deleteButton);
-        tableButtons.setAlignment(Pos.CENTER);
+        tableButtons.getChildren().addAll(filterField, newButton, saveButton, duplicateButton, deleteButton);
+        tableButtons.setAlignment(Pos.CENTER_LEFT);
 
-        connectionsTableView = new TableView<>();
-        connectionsTableView.setPlaceholder(new Label("No saved connections"));
-        connectionsTableView.setEditable(true);
-        VBox.setVgrow(connectionsTableView, Priority.ALWAYS);
+        // TreeView setup
+        connectionsTreeView = new TreeView<>();
+        connectionsTreeView.setEditable(true);
+        VBox.setVgrow(connectionsTreeView, Priority.ALWAYS);
 
-        TableColumn<Connection, String> iconColumn = new TableColumn<>("");
-        iconColumn.setCellFactory(col -> new TableCell<Connection, String>() {
-            private final ImageView imageView = new ImageView();
-            @Override
-            protected void updateItem(String iconName, boolean empty) {
-                super.updateItem(iconName, empty);
-                if (empty || getTableRow() == null || getTableRow().getItem() == null) {
-                    setGraphic(null);
-                } else {
-                    imageView.setImage(getIconImage(iconName));
-                    imageView.setFitHeight(20);
-                    imageView.setFitWidth(20);
-                    setGraphic(imageView);
+        // Cell factory for editing names
+        connectionsTreeView.setCellFactory(treeView -> {
+            TreeCell<Connection> cell = new TextFieldTreeCell<>(new StringConverter<Connection>() {
+                @Override
+                public String toString(Connection conn) {
+                    if (conn == null) return "";
+                    if (conn.getAddress() != null) { // Connection node
+                        return conn.getName() != null ? conn.getName() : "";
+                    } else { // Group node
+                        return conn.getGroup() != null ? conn.getGroup() : "Ungrouped";
+                    }
                 }
+
+                @Override
+                public Connection fromString(String string) {
+                    TreeItem<Connection> item = connectionsTreeView.getSelectionModel().getSelectedItem();
+                    if (item != null && item.getValue() != null && item.getValue().getAddress() != null) {
+                        Connection conn = item.getValue();
+                        conn.setName(string);
+                        return conn;
+                    }
+                    return null;
+                }
+            });
+            cell.setOnMouseClicked(event -> {
+                if (event.getClickCount() == 2 && !cell.isEmpty()) {
+                    Connection conn = cell.getItem();
+                    if (conn != null && conn.getAddress() != null) { // Only edit connections, not groups
+                        cell.startEdit();
+                    }
+                }
+            });
+            return cell;
+        });
+
+        // Handle edit commit
+        connectionsTreeView.setOnEditCommit(event -> {
+            Connection conn = event.getNewValue();
+            if (conn != null && conn.getAddress() != null) {
+                String newName = StringUtils.trim(conn.getName());
+                boolean exists = connectionsList.stream().anyMatch(c ->
+                        !StringUtils.equals(c.getId(), conn.getId()) &&
+                                StringUtils.equalsIgnoreCase(c.getName(), newName));
+                if (!exists) {
+                    conn.setName(newName);
+                    saveConnections();
+                }
+                updateTreeView();
             }
         });
-        iconColumn.setCellValueFactory(new PropertyValueFactory<>("icon"));
-        iconColumn.setMinWidth(26.0);
-        iconColumn.setMaxWidth(26.0);
 
-        TableColumn<Connection, String> nameColumn = new TableColumn<>("Connections");
-        nameColumn.setCellValueFactory(new PropertyValueFactory<>("name"));
-        nameColumn.setCellFactory(TextFieldTableCell.forTableColumn());
-        nameColumn.setOnEditCommit(event -> {
-            String newName = StringUtils.trim(event.getNewValue());
-            boolean exists = connectionsList.stream().anyMatch(conn ->
-                    !StringUtils.equals(conn.getId(), event.getRowValue().getId()) &&
-                            StringUtils.equalsIgnoreCase(conn.getName(), newName));
-            if (!exists) event.getRowValue().setName(newName);
-            connectionsTableView.refresh();
-            saveConnections();
-        });
-
-        TableColumn<Connection, String> idColumn = new TableColumn<>("Id");
-        idColumn.setCellValueFactory(new PropertyValueFactory<>("id"));
-        idColumn.setVisible(false);
-
-        connectionsTableView.getColumns().addAll(iconColumn, nameColumn, idColumn);
         connectionsList.addAll(loadConnections());
-        connectionsTableView.setItems(connectionsList);
-        connectionsTableView.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal != null) {
-                addressTextField.setText(newVal.getAddress());
-                updateUIFromConnection(newVal);
-            }
-            saveButton.setDisable(true);
-            deleteButton.setDisable(newVal == null);
-        });
-        tableSelectionModel = connectionsTableView.getSelectionModel();
-        tableSelectionModel.setSelectionMode(SelectionMode.SINGLE);
-        connectionsTableView.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
 
-        connectionsSection.getChildren().addAll(tableButtons, connectionsTableView);
+        // Build tree structure
+        TreeItem<Connection> rootTree = new TreeItem<>(null);
+        rootTree.setExpanded(true);
+        connectionsTreeView.setRoot(rootTree);
+        connectionsTreeView.setShowRoot(false);
+
+        updateTreeView();
+
+        // Selection model
+        treeSelectionModel = connectionsTreeView.getSelectionModel(); // Corrected type usage
+        treeSelectionModel.selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+            Connection selectedConn = newVal != null ? newVal.getValue() : null;
+            boolean isConnection = selectedConn != null && selectedConn.getAddress() != null;
+
+            if (isConnection) {
+                groupTextField.setText(selectedConn.getGroup() != null ? selectedConn.getGroup() : "");
+                addressTextField.setText(selectedConn.getAddress());
+                updateUIFromConnection(selectedConn);
+            } else {
+                groupTextField.setText("");
+                addressTextField.setText("");
+                usernameTextField.setText("");
+                passwordField.setText("");
+                showConsoleCheckBox.setSelected(false);
+                bundledJavaCombo.getSelectionModel().select(0);
+                heapSizeCombo.getSelectionModel().select(1);
+            }
+
+            saveButton.setDisable(true);
+            duplicateButton.setDisable(!isConnection);
+            deleteButton.setDisable(!isConnection);
+            launchButton.setDisable(!isConnection);
+            groupTextField.setDisable(!isConnection);
+            addressTextField.setDisable(!isConnection);
+            usernameTextField.setDisable(!isConnection);
+            passwordField.setDisable(!isConnection);
+            bundledJavaCombo.setDisable(!isConnection);
+            heapSizeCombo.setDisable(!isConnection);
+            showConsoleCheckBox.setDisable(!isConnection);
+
+            exportButton.setDisable(connectionsList.isEmpty());
+        });
+
+        // Right buttons
+        VBox rightButtons = new VBox(10);
+        importButton = new Button("Import");
+        importButton.setOnAction(e -> importConnections());
+        exportButton = new Button("Export");
+        exportButton.setOnAction(e -> exportConnections());
+        exportButton.setDisable(true);
+        rightButtons.getChildren().addAll(importButton, exportButton);
+        rightButtons.setAlignment(Pos.TOP_CENTER);
+
+        HBox tableArea = new HBox(10);
+        tableArea.getChildren().addAll(connectionsTreeView, rightButtons);
+        HBox.setHgrow(connectionsTreeView, Priority.ALWAYS);
+
+        connectionsSection.getChildren().addAll(tableButtons, tableArea);
 
         // Configuration Section (Modified: Java Home and Max Heap Size on same line)
         VBox configBox = new VBox(10);
 
+        // Group row
+        HBox groupRow = new HBox(10);
+        Label groupLabel = new Label("Group:");
+        groupTextField = new TextField();
+        groupTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
+        groupRow.getChildren().addAll(groupLabel, groupTextField);
+        HBox.setHgrow(groupTextField, Priority.ALWAYS);
+
+        // Address row
         HBox addressRow = new HBox(10);
-        addressLabel = new Label("Address:");
+        Label addressLabel = new Label("Address:");
         addressTextField = new TextField("https://localhost:8443");
         addressTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
         addressRow.getChildren().addAll(addressLabel, addressTextField);
         HBox.setHgrow(addressTextField, Priority.ALWAYS);
 
+        // Credential row
+        HBox credentialsRow = new HBox(10);
+        Label usernameLabel = new Label("Username:");
+        usernameTextField = new TextField();
+        usernameTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
+        Label passwordLabel = new Label("Password:");
+        passwordField = new PasswordField();
+        passwordField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
+        credentialsRow.getChildren().addAll(usernameLabel, usernameTextField, passwordLabel, passwordField);
+        HBox.setHgrow(usernameTextField, Priority.ALWAYS);
+        HBox.setHgrow(passwordField, Priority.ALWAYS);
+
+        // Java Config row
         HBox javaHeapRow = new HBox(10); // Combined Java Home and Max Heap Size
-        javaHomeLabel = new Label("Java Home:");
+        Label javaHomeLabel = new Label("Java Home:");
         bundledJavaCombo = new ComboBox<>(FXCollections.observableArrayList(
                 new BundledJava("", "Java 17"),
                 new BundledJava("", "Java 8")
         ));
         bundledJavaCombo.getSelectionModel().select(0);
         bundledJavaCombo.setOnAction(e -> updateSaveButtonState());
-        heapSizeLabel = new Label("Max Heap Size:");
+        Label heapSizeLabel = new Label("Max Heap Size:");
         heapSizeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 new HeapMemory("256m", "256 MB"),
                 new HeapMemory("512m", "512 MB"),
@@ -186,16 +311,16 @@ public class BridgeLinkLauncher extends Application implements Progress {
         HBox.setHgrow(heapSizeCombo, Priority.ALWAYS);
 
         HBox consoleRow = new HBox(10);
-        consoleLabel = new Label("Show Java Console:");
+        Label consoleLabel = new Label("Show Java Console:");
         showConsoleCheckBox = new CheckBox();
         showConsoleCheckBox.setSelected(false);
         showConsoleCheckBox.setOnAction(e -> updateSaveButtonState());
         consoleRow.getChildren().addAll(consoleLabel, showConsoleCheckBox);
 
-        configBox.getChildren().addAll(addressRow, javaHeapRow, consoleRow);
+        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, consoleRow);
 
         // Progress Section (unchanged)
-        separator2 = new Separator();
+        Separator separator = new Separator();
         progressBar = new ProgressBar(0.0);
         progressBar.setMaxWidth(Double.MAX_VALUE);
         launchButton = new Button("Launch");
@@ -210,7 +335,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         progressIndicator = new ProgressIndicator(-1.0);
         progressIndicator.setPrefHeight(20.0);
         progressText = new Text("Requesting main JNLP...");
-        VBox progressBox = new VBox(10, separator2, progressBarBox, progressIndicator, progressText);
+        VBox progressBox = new VBox(10, separator, progressBarBox, progressIndicator, progressText);
         setProgressControlsVisible(false);
 
         // Bottom Section (unchanged)
@@ -222,11 +347,150 @@ public class BridgeLinkLauncher extends Application implements Progress {
         // Assemble layout
         root.getChildren().addAll(connectionsSection, configBox, progressBox, bottomBox);
 
+        // Select first connection
+        if (!connectionsList.isEmpty()) {
+            TreeItem<Connection> firstGroup = connectionsTreeView.getRoot().getChildren().get(0);
+            if (firstGroup != null && !firstGroup.getChildren().isEmpty()) {
+                treeSelectionModel.select(firstGroup.getChildren().get(0));
+            }
+        }
+
         Scene scene = new Scene(root, 800, 600);
         stage.setScene(scene);
         stage.show();
 
-        connectionsTableView.getSelectionModel().selectFirst();
+        newButton.requestFocus();
+
+        // Check write permissions to "data" and "cache" folders after showing the application
+        checkWritePermissions(stage);
+    }
+
+    private void initializeDirectories() {
+        // Get the application directory (where the JAR or class file resides)
+        try {
+            String jarPath = BridgeLinkLauncher.class.getProtectionDomain().getCodeSource().getLocation().toURI().getPath();
+            appDir = new File(jarPath).getParent(); // Parent directory of the JAR/class file
+            appDir = URLDecoder.decode(appDir, StandardCharsets.UTF_8.name()); // Decode path
+        } catch (Exception e) {
+            appDir = System.getProperty("user.dir"); // Fallback to user.dir if detection fails
+            System.err.println("Failed to determine application directory: " + e.getMessage());
+        }
+
+        if (!getParameters().getRaw().isEmpty()) {
+            appDir = getParameters().getRaw().get(0); // Override with first parameter if provided
+        }
+
+        // Set up data and cache folders
+        dataFolder = new File(appDir, "data");
+        cacheFolder = new File(appDir, "cache");
+    }
+
+    private void checkWritePermissions(Stage stage) {
+        // Check "data" folder
+        StringBuilder errorMessage = new StringBuilder();
+
+        if (!dataFolder.exists()) {
+            try {
+                dataFolder.mkdirs(); // Create the "data" folder if it doesn't exist
+            } catch (SecurityException e) {
+                errorMessage.append("Cannot create 'data' folder in: ").append(appDir)
+                        .append("\nError: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        if (dataFolder.exists() && !dataFolder.isDirectory()) {
+            errorMessage.append("'data' path exists but is not a directory: ")
+                    .append(dataFolder.getAbsolutePath()).append("\n");
+        } else if (dataFolder.exists()) {
+            try {
+                File tempFile = File.createTempFile("test", ".tmp", dataFolder);
+                tempFile.delete(); // Clean up
+            } catch (IOException e) {
+                errorMessage.append("No write permission in 'data' folder: ")
+                        .append(dataFolder.getAbsolutePath())
+                        .append("\nError: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        // Check "cache" folder
+        if (!cacheFolder.exists()) {
+            try {
+                cacheFolder.mkdirs(); // Create the "cache" folder if it doesn't exist
+            } catch (SecurityException e) {
+                errorMessage.append("Cannot create 'cache' folder in: ").append(appDir)
+                        .append("\nError: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        if (cacheFolder.exists() && !cacheFolder.isDirectory()) {
+            errorMessage.append("'cache' path exists but is not a directory: ")
+                    .append(cacheFolder.getAbsolutePath()).append("\n");
+        } else if (cacheFolder.exists()) {
+            try {
+                File tempFile = File.createTempFile("test", ".tmp", cacheFolder);
+                tempFile.delete(); // Clean up
+            } catch (IOException e) {
+                errorMessage.append("No write permission in 'cache' folder: ")
+                        .append(cacheFolder.getAbsolutePath())
+                        .append("\nError: ").append(e.getMessage()).append("\n");
+            }
+        }
+
+        // Show alert if there are any errors
+        if (errorMessage.length() > 0) {
+            showWritePermissionAlert(stage, errorMessage.toString());
+        }
+    }
+
+    private void showWritePermissionAlert(Stage stage, String message) {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.initOwner(stage);
+        alert.setTitle("Write Permission Error");
+        alert.setHeaderText("Cannot write to required folders");
+        alert.setContentText(message + "\nSome features (e.g., saving connections or caching) may not work. " +
+                "Please ensure the 'data' and 'cache' folders are writable.");
+        alert.showAndWait();
+    }
+
+    private void updateTreeView() {
+        updateTreeViewWithFilter(filterField != null ? filterField.getText() : "");
+    }
+
+    private void updateTreeViewWithFilter(String filter) {
+        TreeItem<Connection> root = connectionsTreeView.getRoot();
+        if (root == null) {
+            root = new TreeItem<>(null);
+            root.setExpanded(true);
+            connectionsTreeView.setRoot(root);
+            connectionsTreeView.setShowRoot(false);
+        }
+        root.getChildren().clear();
+
+        Map<String, TreeItem<Connection>> groupItems = new HashMap<>();
+        String filterLower = filter.toLowerCase().trim();
+
+        for (Connection conn : connectionsList) {
+            String groupName = StringUtils.isBlank(conn.getGroup()) ? "Ungrouped" : conn.getGroup();
+            String name = conn.getName() != null ? conn.getName() : "";
+
+            if (filterLower.isEmpty() || name.toLowerCase().contains(filterLower) || groupName.toLowerCase().contains(filterLower)) {
+                TreeItem<Connection> groupItem = groupItems.computeIfAbsent(groupName,
+                        k -> {
+                            Connection groupConn = new Connection(null, "", null, null, null, null, null,
+                                    null, false, false, null, false, null, false, null, null, groupName);
+                            TreeItem<Connection> item = new TreeItem<>(groupConn);
+                            item.setExpanded(true);
+                            return item;
+                        });
+
+                TreeItem<Connection> connItem = new TreeItem<>(conn);
+                groupItem.getChildren().add(connItem);
+
+                if (!root.getChildren().contains(groupItem)) {
+                    root.getChildren().add(groupItem);
+                }
+            }
+        }
     }
 
     private void createNewConnection() {
@@ -240,12 +504,23 @@ public class BridgeLinkLauncher extends Application implements Progress {
             TextInputDialog dialog = new TextInputDialog(newName);
             dialog.setTitle("New Connection");
             dialog.setHeaderText("Enter connection name:");
-
-            // Set an icon for the dialog's title bar
             Stage dialogStage = (Stage) dialog.getDialogPane().getScene().getWindow();
-            dialogStage.getIcons().add(ICON_DEFAULT); // Replace with your image path
+            dialogStage.getIcons().add(ICON_DEFAULT);
 
-            dialog.showAndWait().ifPresent(this::addConnectionWithName);
+            dialog.showAndWait().ifPresent(name -> {
+                addConnectionWithName(name);
+                updateTreeView();
+                Connection newConn = connectionsList.stream()
+                        .filter(conn -> conn.getName().equals(name))
+                        .findFirst()
+                        .orElse(null);
+                if (newConn != null) {
+                    TreeItem<Connection> newItem = findTreeItem(newConn);
+                    if (newItem != null) {
+                        treeSelectionModel.select(newItem);
+                    }
+                }
+            });
         }
     }
 
@@ -256,30 +531,37 @@ public class BridgeLinkLauncher extends Application implements Progress {
             while (nameExists(finalName)) {
                 finalName = name + " Copy " + cnt++;
             }
-            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false);
+            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false, "", "", "");
         }
     }
 
     private void saveCurrentConnection() {
         if (!isLaunching) {
-            Connection selected = connectionsTableView.getSelectionModel().getSelectedItem();
-            if (selected != null) {
-                updateConnectionFromUI(selected);
-                connectionsTableView.refresh();
+            TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+            if (selectedItem != null && selectedItem.getValue().getAddress() != null) {
+                Connection currentConnection = selectedItem.getValue();
+
+                updateConnectionFromUI(currentConnection);
+                updateTreeView();
+                connectionsTreeView.refresh();
                 saveButton.setDisable(true);
                 saveConnections();
+
+                TreeItem<Connection> newSelectedItem = findTreeItem(currentConnection);
+                if (newSelectedItem != null) {
+                    treeSelectionModel.select(newSelectedItem);
+                }
             }
         }
     }
 
-    private void saveAsNewConnection() {
+    private void duplicateConnection() {
         if (!isLaunching) {
             TextInputDialog dialog = new TextInputDialog("New Connection");
-            dialog.setTitle("Save Connection");
+            dialog.setTitle("Duplicate Connection");
             dialog.setHeaderText("Enter new connection name:");
-            // Set an icon for the dialog's title bar
             Stage dialogStage = (Stage) dialog.getDialogPane().getScene().getWindow();
-            dialogStage.getIcons().add(ICON_DEFAULT); // Replace with your image path
+            dialogStage.getIcons().add(ICON_DEFAULT);
 
             dialog.showAndWait().ifPresent(name -> {
                 if (StringUtils.isNotBlank(name)) {
@@ -291,11 +573,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     Connection newConn = new Connection(UUID.randomUUID().toString(), finalName,
                             addressTextField.getText(), getJavaHome(), bundledJavaCombo.getValue().toString(),
                             "", heapSizeCombo.getValue().toString(), "", showConsoleCheckBox.isSelected(),
-                            false, "", false, "", false);
+                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText());
                     connectionsList.add(newConn);
-                    connectionsTableView.refresh();
+                    updateTreeView();
                     saveConnections();
-                    tableSelectionModel.select(newConn);
+                    treeSelectionModel.select(findTreeItem(newConn));
                 }
             });
         }
@@ -303,31 +585,60 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private void deleteCurrentConnection() {
         if (!isLaunching) {
-            Connection selected = connectionsTableView.getSelectionModel().getSelectedItem();
-            if (selected != null) {
-                int index = connectionsTableView.getSelectionModel().getSelectedIndex();
+            TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+            if (selectedItem != null && selectedItem.getValue().getAddress() != null) {
+                Connection selected = selectedItem.getValue();
+                String originalGroup = StringUtils.isBlank(selected.getGroup()) ? "Ungrouped" : selected.getGroup();
+
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
                 alert.setTitle("Delete Connection");
                 alert.setHeaderText("Confirm deletion?");
-
-                // Set an icon for the dialog's title bar
                 Stage dialogStage = (Stage) alert.getDialogPane().getScene().getWindow();
-                dialogStage.getIcons().add(ICON_DEFAULT); //
+                dialogStage.getIcons().add(ICON_DEFAULT);
 
                 alert.showAndWait().ifPresent(response -> {
                     if (response == ButtonType.OK) {
                         connectionsList.remove(selected);
-                        connectionsTableView.refresh();
+                        updateTreeView();
                         saveConnections();
-                        if (index < connectionsList.size()) {
-                            tableSelectionModel.select(index);
-                        } else if (!connectionsList.isEmpty()) {
-                            tableSelectionModel.select(connectionsList.size() - 1);
+
+                        if (!connectionsList.isEmpty()) {
+                            TreeItem<Connection> newGroupItem = null;
+                            for (TreeItem<Connection> groupItem : connectionsTreeView.getRoot().getChildren()) {
+                                if (StringUtils.equals(groupItem.getValue().getGroup(), originalGroup)) {
+                                    newGroupItem = groupItem;
+                                    break;
+                                }
+                            }
+
+                            if (newGroupItem != null && !newGroupItem.getChildren().isEmpty()) {
+                                treeSelectionModel.select(newGroupItem.getChildren().get(0));
+                            } else if (!connectionsTreeView.getRoot().getChildren().isEmpty()) {
+                                TreeItem<Connection> firstGroup = connectionsTreeView.getRoot().getChildren().get(0);
+                                if (!firstGroup.getChildren().isEmpty()) {
+                                    treeSelectionModel.select(firstGroup.getChildren().get(0));
+                                } else {
+                                    treeSelectionModel.clearSelection();
+                                }
+                            } else {
+                                treeSelectionModel.clearSelection();
+                            }
+                        } else {
+                            treeSelectionModel.clearSelection();
                         }
                     }
                 });
             }
         }
+    }
+
+    private TreeItem<Connection> findTreeItem(Connection conn) {
+        for (TreeItem<Connection> groupItem : connectionsTreeView.getRoot().getChildren()) {
+            for (TreeItem<Connection> item : groupItem.getChildren()) {
+                if (item.getValue() == conn) return item;
+            }
+        }
+        return null;
     }
 
     private void launch() {
@@ -346,17 +657,17 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 String host = addressTextField.getText();
                 updateProgressText("Downloading JNLP from " + host);
 
-                DownloadJNLP download = new DownloadJNLP(host, currentDir);
+                DownloadJNLP download = new DownloadJNLP(host, cacheFolder);
                 currentDownload = download;
 
                 JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
-
+                Credential credential = new Credential(StringUtils.trim(usernameTextField.getText()), StringUtils.trim(passwordField.getText()));
                 CodeBase codeBase = download.handle(this);
                 currentDownload = null;
 
                 ProcessLauncher process = new ProcessLauncher();
                 updateProgressText("Starting application...");
-                process.launch(javaConfig, codeBase, showConsoleCheckBox.isSelected());
+                process.launch(javaConfig, credential, codeBase, showConsoleCheckBox.isSelected());
 
                 updateProgressText("Application launched successfully");
 
@@ -403,16 +714,92 @@ public class BridgeLinkLauncher extends Application implements Progress {
         }
     }
 
+    private void importConnections() {
+        if (isLaunching) return;
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Import Connections");
+        fileChooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("JSON Files", "*.json")
+        );
+        File file = fileChooser.showOpenDialog(primaryStage);
+
+        if (file != null) {
+            try {
+                String content = new String(Files.readAllBytes(file.toPath()));
+                ObjectMapper objectMapper = new ObjectMapper();
+                List<Connection> importedConnections = objectMapper.readValue(content,
+                        new TypeReference<List<Connection>>() {});
+
+                // Handle duplicate names
+                for (Connection conn : importedConnections) {
+                    String baseName = conn.getName();
+                    String newName = baseName;
+                    int counter = 1;
+                    while (nameExists(newName)) {
+                        newName = baseName + " (Imported " + counter++ + ")";
+                    }
+                    conn.setName(newName);
+                    conn.setId(UUID.randomUUID().toString()); // Generate new unique ID
+                    connectionsList.add(conn);
+                }
+
+                updateTreeView();
+                saveConnections();
+            } catch (IOException e) {
+                showAlert("Failed to import connections: " + e.getMessage());
+            }
+        }
+    }
+
+    // New method to export selected connection
+    private void exportConnections() {
+        if (isLaunching || connectionsList.isEmpty()) return;
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Export All Connections");
+        fileChooser.getExtensionFilters().add(
+                new FileChooser.ExtensionFilter("JSON Files", "*.json")
+        );
+        fileChooser.setInitialFileName("all_connections.json"); // Default name for all connections
+        File file = fileChooser.showSaveDialog(primaryStage);
+
+        if (file != null) {
+            try {
+                ObjectMapper objectMapper = new ObjectMapper();
+                objectMapper.writeValue(file, connectionsList); // Export entire list
+            } catch (IOException e) {
+                showAlert("Failed to export connections: " + e.getMessage());
+            }
+        }
+    }
+
     private void setUIEnabled(boolean enabled) {
-        addressTextField.setDisable(!enabled);
-        bundledJavaCombo.setDisable(!enabled);
-        heapSizeCombo.setDisable(!enabled);
-        showConsoleCheckBox.setDisable(!enabled);
-        closeWindowCheckBox.setDisable(!enabled);
-        newButton.setDisable(!enabled);
-        saveButton.setDisable(!enabled);
-        saveAsButton.setDisable(!enabled);
-        deleteButton.setDisable(!enabled);
+        TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+        boolean isConnectionSelected = selectedItem != null && selectedItem.getValue() != null &&
+                selectedItem.getValue().getAddress() != null;
+        boolean finalEnabled = enabled && isConnectionSelected;
+
+        // Disable input fields and specific buttons based on selection
+        groupTextField.setDisable(!finalEnabled);
+        addressTextField.setDisable(!finalEnabled);
+        usernameTextField.setDisable(!finalEnabled);
+        passwordField.setDisable(!finalEnabled);
+        bundledJavaCombo.setDisable(!finalEnabled);
+        heapSizeCombo.setDisable(!finalEnabled);
+        showConsoleCheckBox.setDisable(!finalEnabled);
+        saveButton.setDisable(!finalEnabled);
+        duplicateButton.setDisable(!finalEnabled);
+        deleteButton.setDisable(!finalEnabled);
+        launchButton.setDisable(!finalEnabled);
+
+        // Other UI elements only disabled during launch
+        boolean launchEnabled = enabled;
+        closeWindowCheckBox.setDisable(!launchEnabled);
+        newButton.setDisable(!launchEnabled);
+        importButton.setDisable(!launchEnabled);
+        exportButton.setDisable(!launchEnabled || connectionsList.isEmpty());
+        connectionsTreeView.setDisable(!launchEnabled);
     }
 
     private void resetUI() {
@@ -422,6 +809,10 @@ public class BridgeLinkLauncher extends Application implements Progress {
         setUIEnabled(true);
         setProgressControlsVisible(false);
         isLaunching = false;
+
+        // need update Save button after reset UI
+        // Apply after launcher
+        updateSaveButtonState();
     }
 
     private void setProgressControlsVisible(boolean visible) {
@@ -442,28 +833,26 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
     private List<Connection> loadConnections() {
         List<Connection> connections = new ArrayList<>();
-        String pathName = currentDir.isEmpty() ? "data/connections.json" : currentDir + "/data/connections.json";
-        File connectionsFile = new File(pathName);
+        File connectionsFile = new File(dataFolder, "connections.json"); // Use dataFolder directly
         if (connectionsFile.exists()) {
             try {
                 ObjectMapper objectMapper = new ObjectMapper();
                 connections = objectMapper.readValue(connectionsFile, new TypeReference<List<Connection>>() {});
             } catch (IOException e) {
-                System.out.println("Unable to load connections from file. Error: " + e.getMessage());
-//                showAlert("Error", "Unable to load connections from file. Error: " + e.getMessage());
+                showAlert("Unable to load connections from file: " + connectionsFile.getAbsolutePath() +
+                        ". Error: " + e.getMessage());
             }
         }
         return connections;
     }
 
     private void saveConnections() {
-        String pathName = currentDir.isEmpty() ? "data" : currentDir + "/data";
-        File directory = new File(pathName);
-        if (!directory.exists()) {
-            directory.mkdirs();
+        // Ensure the "data" folder exists
+        if (!dataFolder.exists()) {
+            dataFolder.mkdirs(); // Create the "data" folder if it doesn't exist
         }
 
-        File connectionsFile = new File(directory, "connections.json");
+        File connectionsFile = new File(dataFolder, "connections.json");
         try {
             ObjectMapper objectMapper = new ObjectMapper();
             objectMapper.writeValue(connectionsFile, this.connectionsList);
@@ -472,27 +861,26 @@ public class BridgeLinkLauncher extends Application implements Progress {
         }
     }
 
-    private void addConnection(String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
-                               String heapSize, String icon, boolean showJavaConsole, String sslProtocols,
-                               boolean sslProtocolsCustom, String sslCipherSuites, boolean useLegacyDHSettings) {
-        Connection conn = new Connection(UUID.randomUUID().toString(), name, address, javaHome, javaHomeBundledValue,
-                javaFxHome, heapSize, icon, showJavaConsole, sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings);
-
+    private void addConnection(String name, String address, String javaHome, String javaHomeBundledValue,
+                               String javaFxHome, String heapSize, String icon, boolean showJavaConsole,
+                               String sslProtocols, boolean sslProtocolsCustom, String sslCipherSuites,
+                               boolean useLegacyDHSettings, String username, String password, String group) {
+        Connection conn = new Connection(UUID.randomUUID().toString(), name, address, javaHome,
+                javaHomeBundledValue, javaFxHome, heapSize, icon, showJavaConsole,
+                sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings,
+                username, password, group);
         this.connectionsList.add(conn);
-        this.connectionsTableView.refresh();
-
+        updateTreeView(); // Update tree after adding
         saveConnections();
-
-        this.tableSelectionModel.select(conn);
+        this.treeSelectionModel.select(findTreeItem(conn));
         this.saveButton.setDisable(true);
     }
 
-    private Image getIconImage(String iconName) {
-        return new Image(getClass().getResourceAsStream("/images/launcher_32.png"), 20, 20, true, true);
-    }
-
     private void updateUIFromConnection(Connection conn) {
+        groupTextField.setText(conn.getGroup() != null ? conn.getGroup() : "");
         addressTextField.setText(conn.getAddress());
+        usernameTextField.setText(conn.getUsername());
+        passwordField.setText(conn.getPassword());
         showConsoleCheckBox.setSelected(conn.isShowJavaConsole());
 
         String javaHomeBundledValue = conn.getJavaHomeBundledValue();
@@ -513,7 +901,10 @@ public class BridgeLinkLauncher extends Application implements Progress {
     }
 
     private void updateConnectionFromUI(Connection conn) {
+        conn.setGroup(this.groupTextField.getText());
         conn.setAddress(this.addressTextField.getText());
+        conn.setUsername(this.usernameTextField.getText());
+        conn.setPassword(this.passwordField.getText());
         conn.setJavaHome(getJavaHome());
         conn.setJavaHomeBundledValue(this.bundledJavaCombo.getValue().toString());
         conn.setJavaFxHome("");
@@ -532,18 +923,28 @@ public class BridgeLinkLauncher extends Application implements Progress {
             this.saveButton.setDisable(true);
             return;
         }
-        Connection selected = this.connectionsTableView.getSelectionModel().getSelectedItem();
+
+        TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+        if (selectedItem == null) {
+            this.saveButton.setDisable(true);
+            return;
+        }
+
+        Connection selected = selectedItem.getValue();
         if (selected == null) {
             this.saveButton.setDisable(true);
             return;
         }
 
         boolean unchanged =
+                StringUtils.equals(selected.getGroup(), groupTextField.getText()) &&
                 StringUtils.equals(selected.getAddress(), this.addressTextField.getText()) &&
-                        StringUtils.equals(selected.getJavaHome(), getJavaHome()) &&
-                        StringUtils.equals(selected.getJavaHomeBundledValue(), this.bundledJavaCombo.getValue().toString()) &&
-                        StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
-                        selected.isShowJavaConsole() == showConsoleCheckBox.isSelected();
+                StringUtils.equals(selected.getUsername(), this.usernameTextField.getText()) &&
+                StringUtils.equals(selected.getPassword(), this.passwordField.getText()) &&
+                StringUtils.equals(selected.getJavaHome(), getJavaHome()) &&
+                StringUtils.equals(selected.getJavaHomeBundledValue(), this.bundledJavaCombo.getValue().toString()) &&
+                StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
+                selected.isShowJavaConsole() == showConsoleCheckBox.isSelected();
 
         this.saveButton.setDisable(unchanged);
     }
@@ -583,5 +984,4 @@ public class BridgeLinkLauncher extends Application implements Progress {
         SSLBypass.disableSSLVerification();
         launch(args);
     }
-
 }
