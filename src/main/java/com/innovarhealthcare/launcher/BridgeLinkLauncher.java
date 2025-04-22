@@ -61,7 +61,7 @@ import java.util.UUID;
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final boolean DEVELOP = false;
     private static final String VERSION = DEVELOP ? "Development 1.0.1" : "1.0.1";
-    private static final Image ICON_DEFAULT = new Image("/images/logo.png");
+    private Image ICON_DEFAULT;
 
     private final ObservableList<Connection> connectionsList = FXCollections.observableArrayList();
 
@@ -99,6 +99,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
+        ICON_DEFAULT = new Image("/images/logo.png");
         stage.setTitle("BridgeLink Administrator Launcher (" + VERSION + ")");
 
         try {
