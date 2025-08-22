@@ -16,6 +16,8 @@ public class ProcessLauncher {
         List<String> command = new ArrayList<>();
         command.add(javaConfig.getJavaHomeBuilder());
         command.add(javaConfig.getMaxHeapSizeBuilder());
+        if(StringUtils.isNotBlank(javaConfig.getJvmOptions()))
+            command.addAll(javaConfig.getJvmOptionsList());
 
         if (SystemUtils.IS_OS_MAC){
             command.add("-Xdock:icon=icon.png");

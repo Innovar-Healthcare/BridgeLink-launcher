@@ -76,6 +76,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private Button launchButton;
     private ComboBox<BundledJava> bundledJavaCombo;
     private ComboBox<HeapMemory> heapSizeCombo;
+    private TextField jvmOptionsTextField;
     private CheckBox showConsoleCheckBox;
     private Text progressText;
     private ProgressBar progressBar;
@@ -215,6 +216,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             if (isConnection) {
                 groupTextField.setText(selectedConn.getGroup() != null ? selectedConn.getGroup() : "");
                 addressTextField.setText(selectedConn.getAddress());
+                jvmOptionsTextField.setText(selectedConn.getJvmOptions());
                 updateUIFromConnection(selectedConn);
             } else {
                 groupTextField.setText("");
@@ -224,6 +226,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 showConsoleCheckBox.setSelected(false);
                 bundledJavaCombo.getSelectionModel().select(0);
                 heapSizeCombo.getSelectionModel().select(1);
+                jvmOptionsTextField.setText("");
             }
 
             saveButton.setDisable(true);
@@ -236,6 +239,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             passwordField.setDisable(!isConnection);
             bundledJavaCombo.setDisable(!isConnection);
             heapSizeCombo.setDisable(!isConnection);
+            jvmOptionsTextField.setDisable(!isConnection);
             showConsoleCheckBox.setDisable(!isConnection);
 
             exportButton.setDisable(connectionsList.isEmpty());
@@ -311,6 +315,14 @@ public class BridgeLinkLauncher extends Application implements Progress {
         HBox.setHgrow(bundledJavaCombo, Priority.ALWAYS);
         HBox.setHgrow(heapSizeCombo, Priority.ALWAYS);
 
+        // JVM options row
+        HBox jvmOptionsRow = new HBox(10);
+        Label jvmOptionsLabel = new Label("JVM Options:");
+        jvmOptionsTextField = new TextField("");
+        jvmOptionsTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
+        jvmOptionsRow.getChildren().addAll(jvmOptionsLabel, jvmOptionsTextField);
+        HBox.setHgrow(jvmOptionsTextField, Priority.ALWAYS);
+
         HBox consoleRow = new HBox(10);
         Label consoleLabel = new Label("Show Java Console:");
         showConsoleCheckBox = new CheckBox();
@@ -318,7 +330,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         showConsoleCheckBox.setOnAction(e -> updateSaveButtonState());
         consoleRow.getChildren().addAll(consoleLabel, showConsoleCheckBox);
 
-        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, consoleRow);
+        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, jvmOptionsRow, consoleRow);
 
         // Progress Section (unchanged)
         Separator separator = new Separator();
@@ -478,7 +490,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 TreeItem<Connection> groupItem = groupItems.computeIfAbsent(groupName,
                         k -> {
                             Connection groupConn = new Connection(null, "", null, null, null, null, null,
-                                    null, false, false, null, false, null, false, null, null, groupName);
+                                    null, false, false, null, false, null, false, null, null, groupName, null);
                             TreeItem<Connection> item = new TreeItem<>(groupConn);
                             item.setExpanded(true);
                             return item;
@@ -532,7 +544,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             while (nameExists(finalName)) {
                 finalName = name + " Copy " + cnt++;
             }
-            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false, "", "", "");
+            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false, "", "", "", "");
         }
     }
 
@@ -574,7 +586,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     Connection newConn = new Connection(UUID.randomUUID().toString(), finalName,
                             addressTextField.getText(), getJavaHome(), bundledJavaCombo.getValue().toString(),
                             "", heapSizeCombo.getValue().toString(), "", showConsoleCheckBox.isSelected(),
-                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText());
+                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText(), jvmOptionsTextField.getText());
                     connectionsList.add(newConn);
                     updateTreeView();
                     saveConnections();
@@ -661,7 +673,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 DownloadJNLP download = new DownloadJNLP(host, cacheFolder);
                 currentDownload = download;
 
-                JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString());
+                JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString(), this.jvmOptionsTextField.getText());
                 Credential credential = new Credential(StringUtils.trim(usernameTextField.getText()), StringUtils.trim(passwordField.getText()));
                 CodeBase codeBase = download.handle(this);
                 currentDownload = null;
@@ -788,6 +800,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         passwordField.setDisable(!finalEnabled);
         bundledJavaCombo.setDisable(!finalEnabled);
         heapSizeCombo.setDisable(!finalEnabled);
+        jvmOptionsTextField.setDisable(!finalEnabled);
         showConsoleCheckBox.setDisable(!finalEnabled);
         saveButton.setDisable(!finalEnabled);
         duplicateButton.setDisable(!finalEnabled);
@@ -865,11 +878,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private void addConnection(String name, String address, String javaHome, String javaHomeBundledValue,
                                String javaFxHome, String heapSize, String icon, boolean showJavaConsole,
                                String sslProtocols, boolean sslProtocolsCustom, String sslCipherSuites,
-                               boolean useLegacyDHSettings, String username, String password, String group) {
+                               boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions) {
         Connection conn = new Connection(UUID.randomUUID().toString(), name, address, javaHome,
                 javaHomeBundledValue, javaFxHome, heapSize, icon, showJavaConsole,
                 sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings,
-                username, password, group);
+                username, password, group, jvmOptions);
         this.connectionsList.add(conn);
         updateTreeView(); // Update tree after adding
         saveConnections();
@@ -899,6 +912,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 break;
             }
         }
+        jvmOptionsTextField.setText(conn.getJvmOptions());
     }
 
     private void updateConnectionFromUI(Connection conn) {
@@ -910,6 +924,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setJavaHomeBundledValue(this.bundledJavaCombo.getValue().toString());
         conn.setJavaFxHome("");
         conn.setHeapSize(this.heapSizeCombo.getValue().toString());
+        conn.setJvmOptions(this.jvmOptionsTextField.getText());
         conn.setIcon("");
         conn.setShowJavaConsole(showConsoleCheckBox.isSelected());
         conn.setSslProtocolsCustom(false);
@@ -945,6 +960,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 StringUtils.equals(selected.getJavaHome(), getJavaHome()) &&
                 StringUtils.equals(selected.getJavaHomeBundledValue(), this.bundledJavaCombo.getValue().toString()) &&
                 StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
+                StringUtils.equals(selected.getJvmOptions(), this.jvmOptionsTextField.getText()) &&
                 selected.isShowJavaConsole() == showConsoleCheckBox.isSelected();
 
         this.saveButton.setDisable(unchanged);
