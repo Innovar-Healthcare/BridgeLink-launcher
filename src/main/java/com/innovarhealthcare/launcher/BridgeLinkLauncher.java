@@ -52,6 +52,7 @@ import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 import java.util.Map;
 import java.util.HashMap;
@@ -771,6 +772,18 @@ public class BridgeLinkLauncher extends Application implements Progress {
                         newName = baseName + " (Imported " + counter++ + ")";
                     }
                     conn.setName(newName);
+                    // Import icons
+                    if (conn.getIcon() != null && !conn.getIcon().trim().isEmpty()) {
+                        File sourceIcon = new File(new File(file.getParentFile(), "icons"), conn.getIcon());
+                        if (sourceIcon.exists()) {
+                            File iconFolder = new File(dataFolder, "icons");
+                            iconFolder.mkdirs();
+                            File targetIcon = new File(iconFolder, conn.getIcon());
+                            Files.copy(sourceIcon.toPath(), targetIcon.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        } else {
+                            conn.setIcon("");
+                        }
+                    }
                     conn.setId(UUID.randomUUID().toString()); // Generate new unique ID
                     connectionsList.add(conn);
                 }
