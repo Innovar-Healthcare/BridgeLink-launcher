@@ -36,6 +36,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.text.Text;
 
 import javafx.stage.FileChooser;
@@ -148,7 +149,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
         // Cell factory for editing names
         connectionsTreeView.setCellFactory(treeView -> {
-            TreeCell<Connection> cell = new TextFieldTreeCell<>(new StringConverter<Connection>() {
+            TreeCell<Connection> cell = new TextFieldTreeCell<Connection>(new StringConverter<Connection>() {
                 @Override
                 public String toString(Connection conn) {
                     if (conn == null) return "";
@@ -169,7 +170,24 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     }
                     return null;
                 }
-            });
+            }) {
+                @Override
+                public void updateItem(Connection item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (item != null && item.getIcon() != null && !item.getIcon().trim().isEmpty()) {
+                        File icon = new File(new File(dataFolder, "icons"), getItem().getIcon());
+                        if (icon.exists()) {
+                            ImageView value = new ImageView(new Image(icon.toURI().toString()));
+                            value.setPreserveRatio(true);
+                            value.setFitHeight(15);
+                            setGraphic(value);
+                        } else {
+                            setGraphic(null);
+                        }
+                    }
+                }
+            };
+
             cell.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && !cell.isEmpty()) {
                     Connection conn = cell.getItem();
@@ -925,7 +943,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setJavaFxHome("");
         conn.setHeapSize(this.heapSizeCombo.getValue().toString());
         conn.setJvmOptions(this.jvmOptionsTextField.getText());
-        conn.setIcon("");
+        if (conn.getIcon() == null) {
+            conn.setIcon("");
+        }
         conn.setShowJavaConsole(showConsoleCheckBox.isSelected());
         conn.setSslProtocolsCustom(false);
         conn.setSslProtocols("");
