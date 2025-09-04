@@ -36,6 +36,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Priority;
 import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.text.Text;
 
 import javafx.stage.FileChooser;
@@ -51,6 +52,7 @@ import java.io.IOException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 import java.util.Map;
 import java.util.HashMap;
@@ -148,7 +150,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
         // Cell factory for editing names
         connectionsTreeView.setCellFactory(treeView -> {
-            TreeCell<Connection> cell = new TextFieldTreeCell<>(new StringConverter<Connection>() {
+            TreeCell<Connection> cell = new TextFieldTreeCell<Connection>(new StringConverter<Connection>() {
                 @Override
                 public String toString(Connection conn) {
                     if (conn == null) return "";
@@ -169,7 +171,24 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     }
                     return null;
                 }
-            });
+            }) {
+                @Override
+                public void updateItem(Connection item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (item != null && item.getIcon() != null && !item.getIcon().trim().isEmpty()) {
+                        File icon = new File(new File(dataFolder, "icons"), getItem().getIcon());
+                        if (icon.exists()) {
+                            ImageView value = new ImageView(new Image(icon.toURI().toString()));
+                            value.setPreserveRatio(true);
+                            value.setFitHeight(15);
+                            setGraphic(value);
+                        } else {
+                            setGraphic(null);
+                        }
+                    }
+                }
+            };
+
             cell.setOnMouseClicked(event -> {
                 if (event.getClickCount() == 2 && !cell.isEmpty()) {
                     Connection conn = cell.getItem();
@@ -753,6 +772,18 @@ public class BridgeLinkLauncher extends Application implements Progress {
                         newName = baseName + " (Imported " + counter++ + ")";
                     }
                     conn.setName(newName);
+                    // Import icons
+                    if (conn.getIcon() != null && !conn.getIcon().trim().isEmpty()) {
+                        File sourceIcon = new File(new File(file.getParentFile(), "icons"), conn.getIcon());
+                        if (sourceIcon.exists()) {
+                            File iconFolder = new File(dataFolder, "icons");
+                            iconFolder.mkdirs();
+                            File targetIcon = new File(iconFolder, conn.getIcon());
+                            Files.copy(sourceIcon.toPath(), targetIcon.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        } else {
+                            conn.setIcon("");
+                        }
+                    }
                     conn.setId(UUID.randomUUID().toString()); // Generate new unique ID
                     connectionsList.add(conn);
                 }
@@ -925,7 +956,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setJavaFxHome("");
         conn.setHeapSize(this.heapSizeCombo.getValue().toString());
         conn.setJvmOptions(this.jvmOptionsTextField.getText());
-        conn.setIcon("");
+        if (conn.getIcon() == null) {
+            conn.setIcon("");
+        }
         conn.setShowJavaConsole(showConsoleCheckBox.isSelected());
         conn.setSslProtocolsCustom(false);
         conn.setSslProtocols("");
