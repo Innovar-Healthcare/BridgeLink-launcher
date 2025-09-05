@@ -233,9 +233,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
             boolean isConnection = selectedConn != null && selectedConn.getAddress() != null;
 
             if (isConnection) {
-                groupTextField.setText(selectedConn.getGroup() != null ? selectedConn.getGroup() : "");
-                addressTextField.setText(selectedConn.getAddress());
-                jvmOptionsTextField.setText(selectedConn.getJvmOptions());
                 updateUIFromConnection(selectedConn);
             } else {
                 groupTextField.setText("");
@@ -509,7 +506,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 TreeItem<Connection> groupItem = groupItems.computeIfAbsent(groupName,
                         k -> {
                             Connection groupConn = new Connection(null, "", null, null, null, null, null,
-                                    null, false, false, null, false, null, false, null, null, groupName, null);
+                                    null, false, false, null, false, null, false, null, null, groupName, null, false);
                             TreeItem<Connection> item = new TreeItem<>(groupConn);
                             item.setExpanded(true);
                             return item;
@@ -563,7 +560,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             while (nameExists(finalName)) {
                 finalName = name + " Copy " + cnt++;
             }
-            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false, "", "", "", "");
+            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false, "", "", "", "", false);
         }
     }
 
@@ -605,7 +602,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     Connection newConn = new Connection(UUID.randomUUID().toString(), finalName,
                             addressTextField.getText(), getJavaHome(), bundledJavaCombo.getValue().toString(),
                             "", heapSizeCombo.getValue().toString(), "", showConsoleCheckBox.isSelected(),
-                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText(), jvmOptionsTextField.getText());
+                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText(), jvmOptionsTextField.getText(), closeWindowCheckBox.isSelected());
                     connectionsList.add(newConn);
                     updateTreeView();
                     saveConnections();
@@ -909,11 +906,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private void addConnection(String name, String address, String javaHome, String javaHomeBundledValue,
                                String javaFxHome, String heapSize, String icon, boolean showJavaConsole,
                                String sslProtocols, boolean sslProtocolsCustom, String sslCipherSuites,
-                               boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions) {
+                               boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions, boolean closeWindow) {
         Connection conn = new Connection(UUID.randomUUID().toString(), name, address, javaHome,
                 javaHomeBundledValue, javaFxHome, heapSize, icon, showJavaConsole,
                 sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings,
-                username, password, group, jvmOptions);
+                username, password, group, jvmOptions, closeWindow);
         this.connectionsList.add(conn);
         updateTreeView(); // Update tree after adding
         saveConnections();
@@ -944,6 +941,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             }
         }
         jvmOptionsTextField.setText(conn.getJvmOptions());
+        closeWindowCheckBox.setSelected(conn.isCloseWindow());
     }
 
     private void updateConnectionFromUI(Connection conn) {
@@ -965,6 +963,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setSslCipherSuitesCustom(false);
         conn.setSslCipherSuites("");
         conn.setUseLegacyDHSettings(false);
+        conn.setCloseWindow(this.closeWindowCheckBox.isSelected());
     }
 
     private void updateSaveButtonState() {
@@ -994,7 +993,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 StringUtils.equals(selected.getJavaHomeBundledValue(), this.bundledJavaCombo.getValue().toString()) &&
                 StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
                 StringUtils.equals(selected.getJvmOptions(), this.jvmOptionsTextField.getText()) &&
-                selected.isShowJavaConsole() == showConsoleCheckBox.isSelected();
+                selected.isShowJavaConsole() == showConsoleCheckBox.isSelected() &&
+                selected.isCloseWindow() == closeWindowCheckBox.isSelected();
 
         this.saveButton.setDisable(unchanged);
     }
