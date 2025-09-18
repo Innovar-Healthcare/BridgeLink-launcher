@@ -19,12 +19,13 @@ public class Connection {
     private String password;
     private String group;
     private String jvmOptions;
+    private boolean closeWindow;
     // Constructors, getters, and setters
     public Connection() {}
 
     public Connection(String id, String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
                       String heapSize, String icon, boolean showJavaConsole, boolean sslProtocolsCustom, String sslProtocols,
-                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions) {
+                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions, boolean closeWindow) {
         this.id = id;
         this.name = name;
         this.address = address;
@@ -43,6 +44,7 @@ public class Connection {
         this.password = password;
         this.group = group;
         this.jvmOptions = jvmOptions;
+        this.closeWindow = closeWindow;
     }
 
     public String getId() { return id; }
@@ -87,4 +89,6 @@ public class Connection {
     }
     public String getJvmOptions() { return jvmOptions; }
     public void setJvmOptions(String jvmOptions) { this.jvmOptions = jvmOptions; }
+    public boolean isCloseWindow() { return closeWindow; }
+    public void setCloseWindow(boolean closeWindow) { this.closeWindow = closeWindow; }
 }
