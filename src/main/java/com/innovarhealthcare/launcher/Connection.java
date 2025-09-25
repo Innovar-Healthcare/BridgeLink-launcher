@@ -18,12 +18,13 @@ public class Connection {
     private String username;
     private String password;
     private String group;
+    private String jvmOptions;
     // Constructors, getters, and setters
     public Connection() {}
 
     public Connection(String id, String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
                       String heapSize, String icon, boolean showJavaConsole, boolean sslProtocolsCustom, String sslProtocols,
-                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group) {
+                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions) {
         this.id = id;
         this.name = name;
         this.address = address;
@@ -41,6 +42,7 @@ public class Connection {
         this.username = username;
         this.password = password;
         this.group = group;
+        this.jvmOptions = jvmOptions;
     }
 
     public String getId() { return id; }
@@ -77,12 +79,12 @@ public class Connection {
     public void setUsername(String username) { this.username = username; }
     public String getPassword() { return password; }
     public void setPassword(String password) { this.password = password; }
-
     public String getGroup() {
         return group;
     }
-
     public void setGroup(String group) {
         this.group = group;
     }
+    public String getJvmOptions() { return jvmOptions; }
+    public void setJvmOptions(String jvmOptions) { this.jvmOptions = jvmOptions; }
 }
