@@ -81,7 +81,7 @@ public class DownloadJNLP {
             if (versionNodes.getLength() > 0) {
                 bridgeVersion = versionNodes.item(0).getTextContent().replaceAll("[^0-9.]", "");
             }
-
+            bridgeVersion = doc.getDocumentElement().getAttribute("version");
             log("✅ Detected BridgeLink Version: " + bridgeVersion);
 
             // Extract extension JNLPs
