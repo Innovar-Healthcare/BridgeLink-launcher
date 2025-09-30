@@ -2,7 +2,6 @@ package com.innovarhealthcare.launcher;
 
 import org.apache.commons.lang3.SystemUtils;
 
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
