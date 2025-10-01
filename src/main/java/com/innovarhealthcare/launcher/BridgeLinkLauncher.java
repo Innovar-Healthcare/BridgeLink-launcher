@@ -62,7 +62,7 @@ import java.util.UUID;
 
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final boolean DEVELOP = false;
-    private static final String VERSION = DEVELOP ? "Development 1.0.2" : "1.0.2";
+    private static final String VERSION = DEVELOP ? "Development 1.1.0" : "1.1.0";
     private Image ICON_DEFAULT;
 
     private final ObservableList<Connection> connectionsList = FXCollections.observableArrayList();
