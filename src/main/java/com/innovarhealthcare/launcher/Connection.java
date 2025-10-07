@@ -20,12 +20,13 @@ public class Connection {
     private String group;
     private String jvmOptions;
     private boolean closeWindow;
+    private boolean clearCacheJars;
     // Constructors, getters, and setters
     public Connection() {}
 
     public Connection(String id, String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
                       String heapSize, String icon, boolean showJavaConsole, boolean sslProtocolsCustom, String sslProtocols,
-                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions, boolean closeWindow) {
+                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions, boolean closeWindow, boolean clearCacheJars) {
         this.id = id;
         this.name = name;
         this.address = address;
@@ -45,6 +46,7 @@ public class Connection {
         this.group = group;
         this.jvmOptions = jvmOptions;
         this.closeWindow = closeWindow;
+        this.clearCacheJars = clearCacheJars;
     }
 
     public String getId() { return id; }
@@ -91,4 +93,6 @@ public class Connection {
     public void setJvmOptions(String jvmOptions) { this.jvmOptions = jvmOptions; }
     public boolean isCloseWindow() { return closeWindow; }
     public void setCloseWindow(boolean closeWindow) { this.closeWindow = closeWindow; }
+    public boolean isClearCacheJars() { return clearCacheJars; }
+    public void setClearCacheJars(boolean clearCacheJars) { this.clearCacheJars = clearCacheJars; }
 }

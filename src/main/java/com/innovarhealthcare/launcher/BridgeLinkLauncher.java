@@ -80,6 +80,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private ComboBox<HeapMemory> heapSizeCombo;
     private TextField jvmOptionsTextField;
     private CheckBox showConsoleCheckBox;
+    private CheckBox clearCacheCheckBox;
     private Text progressText;
     private ProgressBar progressBar;
     private ProgressIndicator progressIndicator;
@@ -243,6 +244,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 bundledJavaCombo.getSelectionModel().select(0);
                 heapSizeCombo.getSelectionModel().select(1);
                 jvmOptionsTextField.setText("");
+                clearCacheCheckBox.setSelected(false);
             }
 
             saveButton.setDisable(true);
@@ -344,7 +346,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
         showConsoleCheckBox = new CheckBox();
         showConsoleCheckBox.setSelected(false);
         showConsoleCheckBox.setOnAction(e -> updateSaveButtonState());
-        consoleRow.getChildren().addAll(consoleLabel, showConsoleCheckBox);
+        Label clearCacheLabel = new Label("Clear Java Cache:");
+        clearCacheCheckBox = new CheckBox();
+        clearCacheCheckBox.setSelected(false);
+        clearCacheCheckBox.setOnAction(e -> updateSaveButtonState());
+        consoleRow.getChildren().addAll(consoleLabel, showConsoleCheckBox, clearCacheLabel, clearCacheCheckBox);
 
         configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, jvmOptionsRow, consoleRow);
 
@@ -506,7 +512,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 TreeItem<Connection> groupItem = groupItems.computeIfAbsent(groupName,
                         k -> {
                             Connection groupConn = new Connection(null, "", null, null, null, null, null,
-                                    null, false, false, null, false, null, false, null, null, groupName, null, false);
+                                    null, false, false, null, false, null, false, null, null, groupName, null, false, false);
                             TreeItem<Connection> item = new TreeItem<>(groupConn);
                             item.setExpanded(true);
                             return item;
@@ -602,7 +608,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     Connection newConn = new Connection(UUID.randomUUID().toString(), finalName,
                             addressTextField.getText(), getJavaHome(), bundledJavaCombo.getValue().toString(),
                             "", heapSizeCombo.getValue().toString(), "", showConsoleCheckBox.isSelected(),
-                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText(), jvmOptionsTextField.getText(), closeWindowCheckBox.isSelected());
+                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText(), jvmOptionsTextField.getText(), closeWindowCheckBox.isSelected(), clearCacheCheckBox.isSelected());
                     connectionsList.add(newConn);
                     updateTreeView();
                     saveConnections();
@@ -686,7 +692,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 String host = addressTextField.getText();
                 updateProgressText("Downloading JNLP from " + host);
 
-                DownloadJNLP download = new DownloadJNLP(host, cacheFolder);
+                DownloadJNLP download = new DownloadJNLP(host, cacheFolder, clearCacheCheckBox.isSelected());
                 currentDownload = download;
 
                 JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString(), this.jvmOptionsTextField.getText());
@@ -830,6 +836,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         heapSizeCombo.setDisable(!finalEnabled);
         jvmOptionsTextField.setDisable(!finalEnabled);
         showConsoleCheckBox.setDisable(!finalEnabled);
+        clearCacheCheckBox.setDisable(!finalEnabled);
         saveButton.setDisable(!finalEnabled);
         duplicateButton.setDisable(!finalEnabled);
         deleteButton.setDisable(!finalEnabled);
@@ -880,6 +887,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
             try {
                 ObjectMapper objectMapper = new ObjectMapper();
                 connections = objectMapper.readValue(connectionsFile, new TypeReference<List<Connection>>() {});
+                
+                // Handle existing connections that don't have clearCacheJars field (set to false)
+                for (Connection conn : connections) {
+                    // Jackson will set clearCacheJars to false for missing fields, so no additional handling needed
+                }
             } catch (IOException e) {
                 showAlert("Unable to load connections from file: " + connectionsFile.getAbsolutePath() +
                         ". Error: " + e.getMessage());
@@ -910,7 +922,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         Connection conn = new Connection(UUID.randomUUID().toString(), name, address, javaHome,
                 javaHomeBundledValue, javaFxHome, heapSize, icon, showJavaConsole,
                 sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings,
-                username, password, group, jvmOptions, closeWindow);
+                username, password, group, jvmOptions, closeWindow, false);
         this.connectionsList.add(conn);
         updateTreeView(); // Update tree after adding
         saveConnections();
@@ -942,6 +954,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         }
         jvmOptionsTextField.setText(conn.getJvmOptions());
         closeWindowCheckBox.setSelected(conn.isCloseWindow());
+        clearCacheCheckBox.setSelected(conn.isClearCacheJars());
     }
 
     private void updateConnectionFromUI(Connection conn) {
@@ -964,6 +977,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setSslCipherSuites("");
         conn.setUseLegacyDHSettings(false);
         conn.setCloseWindow(this.closeWindowCheckBox.isSelected());
+        conn.setClearCacheJars(this.clearCacheCheckBox.isSelected());
     }
 
     private void updateSaveButtonState() {
@@ -994,7 +1008,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
                 StringUtils.equals(selected.getJvmOptions(), this.jvmOptionsTextField.getText()) &&
                 selected.isShowJavaConsole() == showConsoleCheckBox.isSelected() &&
-                selected.isCloseWindow() == closeWindowCheckBox.isSelected();
+                selected.isCloseWindow() == closeWindowCheckBox.isSelected() &&
+                selected.isClearCacheJars() == clearCacheCheckBox.isSelected();
 
         this.saveButton.setDisable(unchanged);
     }
