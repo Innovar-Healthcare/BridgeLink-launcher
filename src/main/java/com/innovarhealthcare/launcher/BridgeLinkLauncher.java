@@ -5,11 +5,17 @@ import com.innovarhealthcare.launcher.interfaces.Progress;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import javafx.stage.FileChooser;
+import javafx.util.StringConverter;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -34,17 +40,13 @@ import javafx.scene.control.cell.TextFieldTreeCell;
 import javafx.scene.layout.VBox;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
+import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
+import javafx.stage.Stage;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.text.Text;
-
-import javafx.stage.FileChooser;
-import javafx.stage.Stage;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-
-import javafx.util.StringConverter;
 
 import java.io.File;
 import java.io.IOException;
@@ -61,7 +63,7 @@ import java.util.ArrayList;
 import java.util.UUID;
 
 public class BridgeLinkLauncher extends Application implements Progress {
-    private static final boolean DEVELOP = false;
+    private static final boolean DEVELOP = true;
     private static final String VERSION = DEVELOP ? "Development 1.1.0" : "1.1.0";
     private Image ICON_DEFAULT;
 
@@ -81,6 +83,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private TextField jvmOptionsTextField;
     private CheckBox showConsoleCheckBox;
     private CheckBox clearCacheCheckBox;
+    private Button iconUploadButton;
+    private Button iconButton;
     private Text progressText;
     private ProgressBar progressBar;
     private ProgressIndicator progressIndicator;
@@ -99,6 +103,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private String appDir;     // Application directory
     private File dataFolder;   // "data" folder within appDir
     private File cacheFolder;  // New "cache" folder within appDir
+    private String tempSelectedIcon;  // Temporarily selected icon (before save)
 
     @Override
     public void start(Stage stage) {
@@ -176,8 +181,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 @Override
                 public void updateItem(Connection item, boolean empty) {
                     super.updateItem(item, empty);
-                    if (item != null && item.getIcon() != null && !item.getIcon().trim().isEmpty()) {
-                        File icon = new File(new File(dataFolder, "icons"), getItem().getIcon());
+                    if (item != null && !empty && item.getIcon() != null && !item.getIcon().trim().isEmpty()) {
+                        File icon = new File(new File(dataFolder, "icons"), item.getIcon());
                         if (icon.exists()) {
                             ImageView value = new ImageView(new Image(icon.toURI().toString()));
                             value.setPreserveRatio(true);
@@ -186,6 +191,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
                         } else {
                             setGraphic(null);
                         }
+                    } else {
+                        setGraphic(null);
                     }
                 }
             };
@@ -232,6 +239,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
         treeSelectionModel.selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             Connection selectedConn = newVal != null ? newVal.getValue() : null;
             boolean isConnection = selectedConn != null && selectedConn.getAddress() != null;
+
+            // Clear temporary icon when switching connections
+            tempSelectedIcon = null;
 
             if (isConnection) {
                 updateUIFromConnection(selectedConn);
@@ -352,7 +362,37 @@ public class BridgeLinkLauncher extends Application implements Progress {
         clearCacheCheckBox.setOnAction(e -> updateSaveButtonState());
         consoleRow.getChildren().addAll(consoleLabel, showConsoleCheckBox, clearCacheLabel, clearCacheCheckBox);
 
-        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, jvmOptionsRow, consoleRow);
+        // Icon selection row
+        HBox iconRow = new HBox(10);
+        Label iconSelectionLabel = new Label("Icon:");
+        
+        // Create icon button with default icon image
+        iconButton = new Button();
+        iconButton.setPrefSize(32, 32);
+        iconButton.setMinSize(32, 32);
+        iconButton.setMaxSize(32, 32);
+        iconButton.setStyle("-fx-background-color: transparent; -fx-border-color: #cccccc; -fx-border-radius: 4;");
+        
+        // Set default icon
+        ImageView defaultIconView = new ImageView(ICON_DEFAULT);
+        defaultIconView.setFitWidth(24);
+        defaultIconView.setFitHeight(24);
+        defaultIconView.setPreserveRatio(true);
+        iconButton.setGraphic(defaultIconView);
+        iconButton.setOnAction(e -> {
+            IconSelectionDialog iconDialog = new IconSelectionDialog(
+                primaryStage, 
+                dataFolder, 
+                ICON_DEFAULT, 
+                this::updateIconSelection
+            );
+            iconDialog.show();
+        });
+        
+        iconRow.getChildren().addAll(iconSelectionLabel, iconButton);
+        iconRow.setAlignment(Pos.CENTER_LEFT);
+
+        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, jvmOptionsRow, consoleRow, iconRow);
 
         // Progress Section (unchanged)
         Separator separator = new Separator();
@@ -702,7 +742,19 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
                 ProcessLauncher process = new ProcessLauncher();
                 updateProgressText("Starting application...");
-                process.launch(javaConfig, credential, codeBase, showConsoleCheckBox.isSelected());
+                
+                // Get icon path for the selected connection
+                TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+                String iconPath = null;
+                if (selectedItem != null && selectedItem.getValue() != null && selectedItem.getValue().getIcon() != null 
+                    && !selectedItem.getValue().getIcon().trim().isEmpty()) {
+                    File iconFile = new File(new File(dataFolder, "icons"), selectedItem.getValue().getIcon());
+                    if (iconFile.exists()) {
+                        iconPath = iconFile.getAbsolutePath();
+                    }
+                }
+                
+                process.launch(javaConfig, credential, codeBase, showConsoleCheckBox.isSelected(), iconPath);
 
                 updateProgressText("Application launched successfully");
 
@@ -821,6 +873,48 @@ public class BridgeLinkLauncher extends Application implements Progress {
         }
     }
 
+    private void updateIconSelection(String iconFileName) {
+        TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+        if (selectedItem != null && selectedItem.getValue() != null && selectedItem.getValue().getAddress() != null) {
+            // Store the temporarily selected icon (don't update connection yet)
+            tempSelectedIcon = iconFileName != null ? iconFileName : "";
+            
+            // Update icon button to show the new selection
+            updateIconButton(iconFileName);
+            
+            // Enable save button since icon changed
+            updateSaveButtonState();
+            
+            // Don't update tree view here - preserve selection until save
+            // Tree view will be updated after save to show the icon
+        }
+    }
+
+    private void updateIconButton(String iconFileName) {
+        ImageView iconView;
+        
+        if (iconFileName != null && !iconFileName.trim().isEmpty()) {
+            try {
+                File iconFile = new File(new File(dataFolder, "icons"), iconFileName);
+                if (iconFile.exists()) {
+                    Image customIcon = new Image(iconFile.toURI().toString());
+                    iconView = new ImageView(customIcon);
+                } else {
+                    iconView = new ImageView(ICON_DEFAULT);
+                }
+            } catch (Exception e) {
+                iconView = new ImageView(ICON_DEFAULT);
+            }
+        } else {
+            iconView = new ImageView(ICON_DEFAULT);
+        }
+        
+        iconView.setFitWidth(24);
+        iconView.setFitHeight(24);
+        iconView.setPreserveRatio(true);
+        iconButton.setGraphic(iconView);
+    }
+
     private void setUIEnabled(boolean enabled) {
         TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
         boolean isConnectionSelected = selectedItem != null && selectedItem.getValue() != null &&
@@ -837,6 +931,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         jvmOptionsTextField.setDisable(!finalEnabled);
         showConsoleCheckBox.setDisable(!finalEnabled);
         clearCacheCheckBox.setDisable(!finalEnabled);
+        iconButton.setDisable(!finalEnabled);
         saveButton.setDisable(!finalEnabled);
         duplicateButton.setDisable(!finalEnabled);
         deleteButton.setDisable(!finalEnabled);
@@ -955,6 +1050,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
         jvmOptionsTextField.setText(conn.getJvmOptions());
         closeWindowCheckBox.setSelected(conn.isCloseWindow());
         clearCacheCheckBox.setSelected(conn.isClearCacheJars());
+        
+        // Update icon UI
+        updateIconButton(conn.getIcon());
     }
 
     private void updateConnectionFromUI(Connection conn) {
@@ -967,9 +1065,15 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setJavaFxHome("");
         conn.setHeapSize(this.heapSizeCombo.getValue().toString());
         conn.setJvmOptions(this.jvmOptionsTextField.getText());
-        if (conn.getIcon() == null) {
+        
+        // Apply temporary icon if it exists, otherwise keep existing icon
+        if (tempSelectedIcon != null) {
+            conn.setIcon(tempSelectedIcon);
+            tempSelectedIcon = null; // Clear temporary icon after applying
+        } else if (conn.getIcon() == null) {
             conn.setIcon("");
         }
+        
         conn.setShowJavaConsole(showConsoleCheckBox.isSelected());
         conn.setSslProtocolsCustom(false);
         conn.setSslProtocols("");
@@ -989,12 +1093,14 @@ public class BridgeLinkLauncher extends Application implements Progress {
         TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
         if (selectedItem == null) {
             this.saveButton.setDisable(true);
+            tempSelectedIcon = null; // Clear temp icon if no selection
             return;
         }
 
         Connection selected = selectedItem.getValue();
         if (selected == null) {
             this.saveButton.setDisable(true);
+            tempSelectedIcon = null; // Clear temp icon if no connection
             return;
         }
 
@@ -1009,9 +1115,23 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 StringUtils.equals(selected.getJvmOptions(), this.jvmOptionsTextField.getText()) &&
                 selected.isShowJavaConsole() == showConsoleCheckBox.isSelected() &&
                 selected.isCloseWindow() == closeWindowCheckBox.isSelected() &&
-                selected.isClearCacheJars() == clearCacheCheckBox.isSelected();
+                selected.isClearCacheJars() == clearCacheCheckBox.isSelected() &&
+                StringUtils.equals(selected.getIcon(), getCurrentSelectedIcon());
 
         this.saveButton.setDisable(unchanged);
+    }
+
+    private String getCurrentSelectedIcon() {
+        // Return temporary icon if it exists, otherwise return the saved icon
+        if (tempSelectedIcon != null) {
+            return tempSelectedIcon;
+        }
+        
+        TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+        if (selectedItem != null && selectedItem.getValue() != null && selectedItem.getValue().getAddress() != null) {
+            return selectedItem.getValue().getIcon();
+        }
+        return "";
     }
 
     public void showAlert(String err){
