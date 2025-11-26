@@ -52,8 +52,10 @@ public class ProcessLauncher {
         command.add("-cp");
         command.add(String.join(File.pathSeparator, codeBase.getClasspath()));
         command.add(codeBase.getMainClass());
-        command.add(codeBase.getHost());
-        command.add(codeBase.getVersion());
+        
+        for(String arg : codeBase.getArguments()) {
+            command.add(arg);
+        }
 
         if(StringUtils.isNotBlank(credential.getUsername())){
             command.add(credential.getUsername());

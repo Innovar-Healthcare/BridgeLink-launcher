@@ -7,12 +7,14 @@ public class CodeBase {
     private String mainClass;
     private String host;
     private String version;
+    private List<String> arguments;
 
-    public CodeBase(List<String> classpath, String mainClass, String host, String version) {
+    public CodeBase(List<String> classpath, String mainClass, String host, String version, List<String> arguments) {
         this.classpath = classpath;
         this.mainClass = mainClass;
         this.host = host;
         this.version = version;
+        this.arguments = arguments;
     }
 
     public List<String> getClasspath() {
@@ -45,5 +47,13 @@ public class CodeBase {
 
     public void setVersion(String version) {
         this.version = version;
+    }
+
+    public List<String> getArguments() {
+        return arguments;
+    }
+
+    public void setArguments(List<String> arguments) {
+        this.arguments = arguments;
     }
 }

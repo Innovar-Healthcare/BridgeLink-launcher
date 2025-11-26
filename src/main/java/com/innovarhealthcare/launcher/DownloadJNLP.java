@@ -59,7 +59,9 @@ public class DownloadJNLP {
         log("🔍 Fetching main JNLP from: " + jnlpUrl);
 
         List<File> localJars = new ArrayList<>();
+        List<String> arguments = new ArrayList<>();
         String bridgeVersion = "unknown";
+        String mainClass = "com.mirth.connect.client.ui.Mirth";
         try {
             URL url = new URL(jnlpUrl);
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
@@ -110,6 +112,21 @@ public class DownloadJNLP {
 
             // Download & Launch Mirth
             localJars = download(jnlpUrl, coreJars, bridgeVersion, listExtensions, progress);
+
+            // Extract program arguments from application-desc
+            NodeList appDescNodes = doc.getElementsByTagName("application-desc");
+            if (appDescNodes.getLength() > 0) {
+                Element appDescElement = (Element) appDescNodes.item(0);
+                NodeList argNodes = appDescElement.getElementsByTagName("argument");
+                for (int i = 0; i < argNodes.getLength(); i++) {
+                    arguments.add(argNodes.item(i).getTextContent());
+                }
+
+                String mainClassAttr = appDescElement.getAttribute("main-class");
+                if (mainClassAttr != null && !mainClassAttr.isEmpty()) {
+                    mainClass = mainClassAttr;
+                }
+            }
         } catch (Exception e) {
             log("❌ ERROR in handle(): " + e.getMessage());
 
@@ -122,7 +139,7 @@ public class DownloadJNLP {
             classpath.add(jar.getAbsolutePath());
         }
 
-        return new CodeBase(classpath,"com.mirth.connect.client.ui.Mirth", host, bridgeVersion);
+        return new CodeBase(classpath, mainClass, host, bridgeVersion, arguments);
     }
 
     private ExtensionInfo parseExtensionJnlp(String extJnlpUrl) {
