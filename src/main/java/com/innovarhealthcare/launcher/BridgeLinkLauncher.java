@@ -5,11 +5,14 @@ import com.innovarhealthcare.launcher.interfaces.Progress;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import javafx.stage.FileChooser;
+import javafx.util.StringConverter;
+import javafx.application.Application;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.exception.ExceptionUtils;
-
-import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -35,25 +38,23 @@ import javafx.scene.layout.VBox;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.Priority;
+import javafx.stage.Stage;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.text.Text;
 
-import javafx.stage.FileChooser;
-import javafx.stage.Stage;
-import javafx.collections.FXCollections;
-import javafx.collections.ObservableList;
-
-import javafx.util.StringConverter;
-
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
-
+import java.io.InputStream;
+import java.io.PrintWriter;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
@@ -63,7 +64,10 @@ import java.util.UUID;
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final boolean DEVELOP = false;
     private static final String VERSION = DEVELOP ? "Development 1.1.0" : "1.1.0";
-    private Image ICON_DEFAULT;
+    private static final String LOG_FILE = "BridgeLinkLauncher-debug.log";
+    private static final boolean DEBUG = false;
+    private Image LAUNCHER_ICON;
+    private Image BRIDGELINK_ICON;
 
     private final ObservableList<Connection> connectionsList = FXCollections.observableArrayList();
 
@@ -81,6 +85,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private TextField jvmOptionsTextField;
     private CheckBox showConsoleCheckBox;
     private CheckBox clearCacheCheckBox;
+    private Button iconButton;
     private Text progressText;
     private ProgressBar progressBar;
     private ProgressIndicator progressIndicator;
@@ -99,15 +104,17 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private String appDir;     // Application directory
     private File dataFolder;   // "data" folder within appDir
     private File cacheFolder;  // New "cache" folder within appDir
+    private String tempSelectedIcon;  // Temporarily selected icon (before save)
 
     @Override
     public void start(Stage stage) {
         primaryStage = stage;
-        ICON_DEFAULT = new Image("/images/logo.png");
+        LAUNCHER_ICON = new Image("/images/logo.png");
+        BRIDGELINK_ICON = new Image("/images/BridgeLink.png");
         stage.setTitle("BridgeLink Administrator Launcher (" + VERSION + ")");
 
         try {
-            stage.getIcons().add(ICON_DEFAULT);
+            stage.getIcons().add(LAUNCHER_ICON);
         } catch (Exception e) {
             // Handle icon loading failure
         }
@@ -176,16 +183,39 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 @Override
                 public void updateItem(Connection item, boolean empty) {
                     super.updateItem(item, empty);
-                    if (item != null && item.getIcon() != null && !item.getIcon().trim().isEmpty()) {
-                        File icon = new File(new File(dataFolder, "icons"), getItem().getIcon());
-                        if (icon.exists()) {
-                            ImageView value = new ImageView(new Image(icon.toURI().toString()));
+                    if (item != null && !empty && item.getIcon() != null && !item.getIcon().trim().isEmpty()) {
+                        String iconName = item.getIcon();
+                        Image iconImage = null;
+                        
+                        // Check if it's BridgeLink.png, load from /images/ resource
+                        if (iconName.equals("BridgeLink.png")) {
+                            try {
+                                iconImage = new Image(getClass().getResourceAsStream("/images/BridgeLink.png"));
+                            } catch (Exception e) {
+                                // Fallback to default icon if resource fails
+                            }
+                        } else {
+                            // Load from data/icons folder for other icons
+                            File icon = new File(new File(dataFolder, "icons"), iconName);
+                            if (icon.exists()) {
+                                try {
+                                    iconImage = new Image(icon.toURI().toString());
+                                } catch (Exception e) {
+                                    // Failed to load file icon
+                                }
+                            }
+                        }
+                        
+                        if (iconImage != null) {
+                            ImageView value = new ImageView(iconImage);
                             value.setPreserveRatio(true);
                             value.setFitHeight(15);
                             setGraphic(value);
                         } else {
                             setGraphic(null);
                         }
+                    } else {
+                        setGraphic(null);
                     }
                 }
             };
@@ -232,6 +262,13 @@ public class BridgeLinkLauncher extends Application implements Progress {
         treeSelectionModel.selectedItemProperty().addListener((obs, oldVal, newVal) -> {
             Connection selectedConn = newVal != null ? newVal.getValue() : null;
             boolean isConnection = selectedConn != null && selectedConn.getAddress() != null;
+
+            // Only clear temporary icon when switching to a different connection
+            Connection oldConn = oldVal != null ? oldVal.getValue() : null;
+            boolean connectionChanged = selectedConn != oldConn;
+            if (connectionChanged) {
+                tempSelectedIcon = null;
+            }
 
             if (isConnection) {
                 updateUIFromConnection(selectedConn);
@@ -352,7 +389,37 @@ public class BridgeLinkLauncher extends Application implements Progress {
         clearCacheCheckBox.setOnAction(e -> updateSaveButtonState());
         consoleRow.getChildren().addAll(consoleLabel, showConsoleCheckBox, clearCacheLabel, clearCacheCheckBox);
 
-        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, jvmOptionsRow, consoleRow);
+        // Icon selection row
+        HBox iconRow = new HBox(10);
+        Label iconSelectionLabel = new Label("Icon:");
+
+        // Create icon button with default icon image
+        iconButton = new Button();
+        iconButton.setPrefSize(32, 32);
+        iconButton.setMinSize(32, 32);
+        iconButton.setMaxSize(32, 32);
+        iconButton.setStyle("-fx-background-color: transparent; -fx-border-color: #cccccc; -fx-border-radius: 4;");
+
+        // Set default icon
+        ImageView defaultIconView = new ImageView(LAUNCHER_ICON);
+        defaultIconView.setFitWidth(24);
+        defaultIconView.setFitHeight(24);
+        defaultIconView.setPreserveRatio(true);
+        iconButton.setGraphic(defaultIconView);
+        iconButton.setOnAction(e -> {
+            IconSelectionDialog iconDialog = new IconSelectionDialog(
+                primaryStage,
+                dataFolder,
+                BRIDGELINK_ICON,
+                this::updateIconSelection
+            );
+            iconDialog.show();
+        });
+
+        iconRow.getChildren().addAll(iconSelectionLabel, iconButton);
+        iconRow.setAlignment(Pos.CENTER_LEFT);
+
+        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, jvmOptionsRow, consoleRow, iconRow);
 
         // Progress Section (unchanged)
         Separator separator = new Separator();
@@ -418,6 +485,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
         // Set up data and cache folders
         dataFolder = new File(appDir, "data");
         cacheFolder = new File(appDir, "cache");
+
+        // Copy resource icons to data/icons folder
+        copyResourceIconsToDataFolder();
     }
 
     private void checkWritePermissions(Stage stage) {
@@ -540,7 +610,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             dialog.setTitle("New Connection");
             dialog.setHeaderText("Enter connection name:");
             Stage dialogStage = (Stage) dialog.getDialogPane().getScene().getWindow();
-            dialogStage.getIcons().add(ICON_DEFAULT);
+            dialogStage.getIcons().add(LAUNCHER_ICON);
 
             dialog.showAndWait().ifPresent(name -> {
                 addConnectionWithName(name);
@@ -596,7 +666,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             dialog.setTitle("Duplicate Connection");
             dialog.setHeaderText("Enter new connection name:");
             Stage dialogStage = (Stage) dialog.getDialogPane().getScene().getWindow();
-            dialogStage.getIcons().add(ICON_DEFAULT);
+            dialogStage.getIcons().add(LAUNCHER_ICON);
 
             dialog.showAndWait().ifPresent(name -> {
                 if (StringUtils.isNotBlank(name)) {
@@ -629,7 +699,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 alert.setTitle("Delete Connection");
                 alert.setHeaderText("Confirm deletion?");
                 Stage dialogStage = (Stage) alert.getDialogPane().getScene().getWindow();
-                dialogStage.getIcons().add(ICON_DEFAULT);
+                dialogStage.getIcons().add(LAUNCHER_ICON);
 
                 alert.showAndWait().ifPresent(response -> {
                     if (response == ButtonType.OK) {
@@ -702,7 +772,31 @@ public class BridgeLinkLauncher extends Application implements Progress {
 
                 ProcessLauncher process = new ProcessLauncher();
                 updateProgressText("Starting application...");
-                process.launch(javaConfig, credential, codeBase, showConsoleCheckBox.isSelected());
+
+                // Get icon path and connection name for the selected connection
+                TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+                String iconPath = null;
+                String connectionName = null;
+                if (selectedItem != null && selectedItem.getValue() != null && selectedItem.getValue().getAddress() != null) {
+                    Connection selectedConnection = selectedItem.getValue();
+                    connectionName = selectedConnection.getName();
+
+                    if (selectedConnection.getIcon() != null && !selectedConnection.getIcon().trim().isEmpty()) {
+                        String iconFileName = selectedConnection.getIcon();
+                        if (iconFileName.startsWith("resource:")) {
+                            // Remove the "resource:" prefix and use the filename directly from data/icons
+                            iconFileName = iconFileName.substring("resource:".length());
+                        }
+
+                        // All icons (resource and user-uploaded) are now in data/icons folder
+                        File iconFile = new File(new File(dataFolder, "icons"), iconFileName);
+                        if (iconFile.exists()) {
+                            iconPath = iconFile.getAbsolutePath();
+                        }
+                    }
+                }
+
+                process.launch(javaConfig, credential, codeBase, showConsoleCheckBox.isSelected(), iconPath, connectionName);
 
                 updateProgressText("Application launched successfully");
 
@@ -821,6 +915,51 @@ public class BridgeLinkLauncher extends Application implements Progress {
         }
     }
 
+    private void updateIconSelection(String iconFileName) {
+        TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+        if (selectedItem != null && selectedItem.getValue() != null && selectedItem.getValue().getAddress() != null) {
+            // Store the temporarily selected icon (don't update connection yet)
+            tempSelectedIcon = iconFileName != null ? iconFileName : "";
+
+            // Update icon button to show the new selection
+            updateIconButton(iconFileName);
+
+            // Enable save button since icon changed
+            updateSaveButtonState();
+        }
+    }
+
+    private void updateIconButton(String iconFileName) {
+        ImageView iconView;
+
+        if (iconFileName != null && !iconFileName.trim().isEmpty()) {
+            try {
+                // Check if it's BridgeLink.png, load from /images/ resource
+                if (iconFileName.equals("BridgeLink.png")) {
+                    iconView = new ImageView(BRIDGELINK_ICON);
+                } else {
+                    // Load from data/icons folder for other icons
+                    File iconFile = new File(new File(dataFolder, "icons"), iconFileName);
+                    if (iconFile.exists()) {
+                        Image customIcon = new Image(iconFile.toURI().toString());
+                        iconView = new ImageView(customIcon);
+                    } else {
+                        iconView = new ImageView(BRIDGELINK_ICON);
+                    }
+                }
+            } catch (Exception e) {
+                iconView = new ImageView(BRIDGELINK_ICON);
+            }
+        } else {
+            iconView = new ImageView(BRIDGELINK_ICON);
+        }
+
+        iconView.setFitWidth(24);
+        iconView.setFitHeight(24);
+        iconView.setPreserveRatio(true);
+        iconButton.setGraphic(iconView);
+    }
+
     private void setUIEnabled(boolean enabled) {
         TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
         boolean isConnectionSelected = selectedItem != null && selectedItem.getValue() != null &&
@@ -837,6 +976,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         jvmOptionsTextField.setDisable(!finalEnabled);
         showConsoleCheckBox.setDisable(!finalEnabled);
         clearCacheCheckBox.setDisable(!finalEnabled);
+        iconButton.setDisable(!finalEnabled);
         saveButton.setDisable(!finalEnabled);
         duplicateButton.setDisable(!finalEnabled);
         deleteButton.setDisable(!finalEnabled);
@@ -887,7 +1027,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
             try {
                 ObjectMapper objectMapper = new ObjectMapper();
                 connections = objectMapper.readValue(connectionsFile, new TypeReference<List<Connection>>() {});
-                
+
                 // Handle existing connections that don't have clearCacheJars field (set to false)
                 for (Connection conn : connections) {
                     // Jackson will set clearCacheJars to false for missing fields, so no additional handling needed
@@ -955,6 +1095,10 @@ public class BridgeLinkLauncher extends Application implements Progress {
         jvmOptionsTextField.setText(conn.getJvmOptions());
         closeWindowCheckBox.setSelected(conn.isCloseWindow());
         clearCacheCheckBox.setSelected(conn.isClearCacheJars());
+
+        // Update icon UI - use tempSelectedIcon if set, otherwise use connection's icon
+        String iconToDisplay = (tempSelectedIcon != null) ? tempSelectedIcon : conn.getIcon();
+        updateIconButton(iconToDisplay);
     }
 
     private void updateConnectionFromUI(Connection conn) {
@@ -967,9 +1111,15 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setJavaFxHome("");
         conn.setHeapSize(this.heapSizeCombo.getValue().toString());
         conn.setJvmOptions(this.jvmOptionsTextField.getText());
-        if (conn.getIcon() == null) {
+
+        // Apply temporary icon if it exists, otherwise keep existing icon
+        if (tempSelectedIcon != null) {
+            conn.setIcon(tempSelectedIcon);
+            tempSelectedIcon = null; // Clear temporary icon after applying
+        } else if (conn.getIcon() == null) {
             conn.setIcon("");
         }
+
         conn.setShowJavaConsole(showConsoleCheckBox.isSelected());
         conn.setSslProtocolsCustom(false);
         conn.setSslProtocols("");
@@ -989,14 +1139,21 @@ public class BridgeLinkLauncher extends Application implements Progress {
         TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
         if (selectedItem == null) {
             this.saveButton.setDisable(true);
+            tempSelectedIcon = null; // Clear temp icon if no selection
             return;
         }
 
         Connection selected = selectedItem.getValue();
         if (selected == null) {
             this.saveButton.setDisable(true);
+            tempSelectedIcon = null; // Clear temp icon if no connection
             return;
         }
+
+        String currentIcon = getCurrentSelectedIcon();
+        String originalIcon = selected.getIcon();
+        log("Original Icon: " + originalIcon + ", Current Icon: " + currentIcon);
+
 
         boolean unchanged =
                 StringUtils.equals(selected.getGroup(), groupTextField.getText()) &&
@@ -1009,9 +1166,21 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 StringUtils.equals(selected.getJvmOptions(), this.jvmOptionsTextField.getText()) &&
                 selected.isShowJavaConsole() == showConsoleCheckBox.isSelected() &&
                 selected.isCloseWindow() == closeWindowCheckBox.isSelected() &&
-                selected.isClearCacheJars() == clearCacheCheckBox.isSelected();
-
+                selected.isClearCacheJars() == clearCacheCheckBox.isSelected() &&
+                StringUtils.equals(originalIcon, currentIcon);
         this.saveButton.setDisable(unchanged);
+    }
+
+    private String getCurrentSelectedIcon() {
+        // Return temporary icon if it exists, otherwise return the saved icon
+        if (tempSelectedIcon != null) {
+            return tempSelectedIcon;
+        }
+        TreeItem<Connection> selectedItem = connectionsTreeView.getSelectionModel().getSelectedItem();
+        if (selectedItem != null && selectedItem.getValue() != null && selectedItem.getValue().getAddress() != null) {
+            return selectedItem.getValue().getIcon();
+        }
+        return "";
     }
 
     public void showAlert(String err){
@@ -1045,8 +1214,69 @@ public class BridgeLinkLauncher extends Application implements Progress {
         Platform.runLater(() -> this.progressText.setText(message));
     }
 
+    /**
+     * Copies all resource icons to the data/icons folder for easy access
+     */
+    private void copyResourceIconsToDataFolder() {
+        try {
+            // Create icons directory if it doesn't exist
+            File iconsFolder = new File(dataFolder, "icons");
+            if (!iconsFolder.exists()) {
+                iconsFolder.mkdirs();
+            }
+
+            // List of default icon names from resources
+            String[] defaultIconNames = {
+                "deep-learning.png", "healthcare.png", "sharing.png",
+                "sun.png", "support.png", "support2.png", "transfer.png"
+            };
+
+            // Copy icons from /icons/ folder
+            for (String iconName : defaultIconNames) {
+                try {
+                    InputStream iconStream = getClass().getResourceAsStream("/icons/" + iconName);
+                    if (iconStream != null) {
+                        File targetFile = new File(iconsFolder, iconName);
+
+                        // Only copy if file doesn't exist or if resource is newer
+                        if (!targetFile.exists()) {
+                            try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                                byte[] buffer = new byte[1024];
+                                int bytesRead;
+                                while ((bytesRead = iconStream.read(buffer)) != -1) {
+                                    fos.write(buffer, 0, bytesRead);
+                                }
+                            }
+                            log("Copied resource icon: " + iconName + " to " + targetFile.getAbsolutePath());
+                        }
+                        iconStream.close();
+                    }
+                } catch (IOException e) {
+                    log("Failed to copy resource icon " + iconName + ": " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            log("Error setting up resource icons: " + e.getMessage());
+        }
+    }
+    private void log(String message) {
+        if(DEBUG){
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+            String logMessage = "[" + timestamp + "] " + message;
+
+            // Print to console
+            System.out.println(logMessage);
+
+            // Append to log file
+            try (PrintWriter out = new PrintWriter(new FileWriter(LOG_FILE, true))) {
+                out.println(logMessage);
+            } catch (IOException e) {
+                System.err.println("ERROR: Could not write to log file - " + e.getMessage());
+            }
+        }
+    }
     public static void main(String[] args) {
         SSLBypass.disableSSLVerification();
-        launch(args);
+        Application.launch(BridgeLinkLauncher.class, args);
     }
 }
