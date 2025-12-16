@@ -121,8 +121,10 @@ public class ProcessLauncher {
         
         // Use the standard main class for all platforms
         command.add(codeBase.getMainClass());
-        command.add(codeBase.getHost());
-        command.add(codeBase.getVersion());
+        
+        for(String arg : codeBase.getArguments()) {
+            command.add(arg);
+        }
 
         if(StringUtils.isNotBlank(credential.getUsername())){
             command.add(credential.getUsername());
