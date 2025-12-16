@@ -33,7 +33,7 @@ import java.util.Map;
 
 /**
  *
- * @author Zi-Min (Jim) Weng
+ * @author Thaitran,Zi-Min (Jim) Weng
  */
 public class DownloadJNLP {
     private static final String LOG_FILE = "launcher-debug.log";
@@ -68,7 +68,6 @@ public class DownloadJNLP {
             DocumentBuilder builder = factory.newDocumentBuilder();
             Document doc = builder.parse(url.openStream());
 
-            List<String> coreJars = new ArrayList<>();
 
             // Extract core JARs with their SHA-256 hashes
             List<JarInfo> coreJarInfos = new ArrayList<>();
@@ -77,9 +76,8 @@ public class DownloadJNLP {
                 checkCancelled("core JAR extraction");
                 Element jarElement = (Element) jarList.item(i);
                 String href = jarElement.getAttribute("href");
-                String getSha256 = jarElement.getAttribute("getSha256");
-                coreJarInfos.add(new JarInfo(href, getSha256));
-                coreJars.add(href); // Keep for backward compatibility
+                String jarElementSha256 = jarElement.getAttribute("sha256");
+                coreJarInfos.add(new JarInfo(href, jarElementSha256));
             }
 
             // Detect Mirth version
@@ -147,9 +145,9 @@ public class DownloadJNLP {
             for (int i = 0; i < jarList.getLength(); i++) {
                 Element jarElement = (Element) jarList.item(i);
                 String jarPath = jarElement.getAttribute("href");
-                String getSha256 = jarElement.getAttribute("getSha256");
+                String jarElementSha256 = jarElement.getAttribute("sha256");
                 String jarUrl = this.host + "/webstart/extensions/" + jarPath;
-                mapJars.put(jarUrl, new File(jarPath).getName() + "|" + getSha256);
+                mapJars.put(jarUrl, new File(jarPath).getName() + "|" + jarElementSha256);
             }
 
             log("✅ Extension JARs for " + extensionName + ": " + mapJars.toString());
@@ -163,7 +161,7 @@ public class DownloadJNLP {
     }
 
     private List<File> download(String jnlpUrl, List<JarInfo> coreJarInfos, String bridgeVersion,
-            List<ExtensionInfo> listExtensions, Progress progress, boolean clearCacheJars) throws  Exception{
+                                List<ExtensionInfo> listExtensions, Progress progress, boolean clearCacheJars) throws  Exception{
         log("🚀 Starting download process for BridgeLink version: " + bridgeVersion);
         checkCancelled("download start");
 
@@ -190,27 +188,32 @@ public class DownloadJNLP {
 
             cntNum += 1;
 
-            // Check if file exists and compare SHA-256 hash from JNLP
-            if (localFile.exists() && jarInfo.getSha256() != null && !jarInfo.getSha256().trim().isEmpty()) {
-                try {
-                    String localHash = calculategetSha256(localFile);
-                    log("🔍 Local file SHA-256:    '" + localHash + "'");
-                    log("🔍 Expected SHA-256:      '" + jarInfo.getSha256() + "'");
-                    if (jarInfo.getSha256().equals(localHash)) {
-                        log("✅ Skipping core JAR (hash matches): " + localFile.getName());
-                        localJars.add(localFile);
-                        progress.updateProgressBar((double) cntNum/numOfJars);
-                        continue;
-                    } else {
-                        log("🔄 Hash differs, re-downloading core JAR: " + localFile.getName());
-                        log("🔄 Local:    " + localHash);
-                        log("🔄 Expected: " + jarInfo.getSha256());
-                    }
-                } catch (Exception e) {
-                    log("❌ ERROR calculating local hash for " + localFile.getName() + ": " + e.getMessage());
-                }
+            // Check if clearCacheJars is enabled - if so, always download
+            if (clearCacheJars) {
+                log("🔄 Clear cache enabled - downloading core JAR: " + localFile.getName());
             } else {
-                log("🔍 Core JAR info - exists: " + localFile.exists() + ", getSha256: '" + jarInfo.getSha256() + "'");
+                // Check if file exists and compare SHA-256 hash from JNLP
+                if (localFile.exists() && jarInfo.getSha256() != null && !jarInfo.getSha256().trim().isEmpty()) {
+                    try {
+                        String localHash = calculateSha256(localFile);
+                        log("🔍 Local file SHA-256:    '" + localHash + "'");
+                        log("🔍 Expected SHA-256:      '" + jarInfo.getSha256() + "'");
+                        if (jarInfo.getSha256().trim().equals(localHash)) {
+                            log("✅ Skipping core JAR (hash matches): " + localFile.getName());
+                            localJars.add(localFile);
+                            progress.updateProgressBar((double) cntNum/numOfJars);
+                            continue;
+                        } else {
+                            log("🔄 Hash differs, re-downloading core JAR: " + localFile.getName());
+                            log("🔄 Local:    " + localHash);
+                            log("🔄 Expected: " + jarInfo.getSha256());
+                        }
+                    } catch (Exception e) {
+                        log("❌ ERROR calculating local hash for " + localFile.getName() + ": " + e.getMessage());
+                    }
+                } else {
+                    log("🔍 Core JAR info - exists: " + localFile.exists() + ", getSha256: '" + jarInfo.getSha256() + "'");
+                }
             }
 
             // Download if file doesn't exist or hashes don't match
@@ -248,37 +251,42 @@ public class DownloadJNLP {
                 checkCancelled("extension JAR download loop");
                 String jarUrl = entry.getKey();
                 String jarInfo = entry.getValue();
-                
+
                 // Split jarName and getSha256 (format: "jarName|getSha256")
                 String[] parts = jarInfo.split("\\|", 2);
                 String jarName = parts[0];
-                String expectedgetSha256 = parts.length > 1 ? parts[1] : null;
-                
+                String expectedSha256 = parts.length > 1 ? parts[1] : null;
+
                 File localFile = new File(extensionFolder, jarName);
 
                 progress.updateProgressText("Downloading JARs for extension " + jarName + "...");
                 log("⬇️ Checking Extension JAR: " + jarUrl + " -> " + localFile.getAbsolutePath());
 
-                // Check if file exists and compare SHA-256 hash from JNLP
-                if (localFile.exists() && expectedgetSha256 != null && !expectedgetSha256.trim().isEmpty()) {
-                    try {
-                        String localHash = calculategetSha256(localFile);
-                        log("🔍 Extension Local SHA-256:    '" + localHash + "'");
-                        log("🔍 Extension Expected SHA-256:  '" + expectedgetSha256 + "'");
-                        if (expectedgetSha256.equals(localHash)) {
-                            log("✅ Skipping extension JAR (hash matches): " + localFile.getName());
-                            localJars.add(localFile);
-                            continue;
-                        } else {
-                            log("🔄 Hash differs, re-downloading extension JAR: " + localFile.getName());
+                // Check if clearCacheJars is enabled - if so, always download
+                if (clearCacheJars) {
+                    log("🔄 Clear cache enabled - downloading extension JAR: " + localFile.getName());
+                } else {
+                    // Check if file exists and compare SHA-256 hash from JNLP
+                    if (localFile.exists() && expectedSha256 != null && !expectedSha256.trim().isEmpty()) {
+                        try {
+                            String localHash = calculateSha256(localFile);
+                            log("🔍 Extension Local SHA-256:    '" + localHash + "'");
+                            log("🔍 Extension Expected SHA-256:  '" + expectedSha256 + "'");
+                            if (expectedSha256.trim().equals(localHash)) {
+                                log("✅ Skipping extension JAR (hash matches): " + localFile.getName());
+                                localJars.add(localFile);
+                                continue;
+                            } else {
+                                log("🔄 Hash differs, re-downloading extension JAR: " + localFile.getName());
+                            }
+                        } catch (Exception e) {
+                            log("❌ ERROR calculating local hash for " + localFile.getName() + ": " + e.getMessage());
                         }
-                    } catch (Exception e) {
-                        log("❌ ERROR calculating local hash for " + localFile.getName() + ": " + e.getMessage());
                     }
                 }
 
                 // Download if file doesn't exist or hashes don't match
-                if (!downloadFile(jarUrl, localFile, expectedgetSha256)) {
+                if (!downloadFile(jarUrl, localFile, expectedSha256)) {
                     log("❌ WARNING: Missing extension JAR: " + jarUrl);
                     continue;
                 }
@@ -291,15 +299,16 @@ public class DownloadJNLP {
         return localJars;
     }
 
-    private boolean downloadFile(String urlStr, File destination, String expectedgetSha256) throws InterruptedException {
+    private boolean downloadFile(String urlStr, File destination, String expectedSha256) throws InterruptedException {
         if (Thread.interrupted() || cancelled){
             throw new InterruptedException("Download cancelled");
         }
 
         try {
-            if (destination.exists() && expectedgetSha256 != null) {
-                String actualgetSha256 = calculategetSha256(destination);
-                if (expectedgetSha256.equalsIgnoreCase(actualgetSha256)) {
+            // Skip file existence check if clearCacheJars is enabled
+            if (!clearCacheJars && destination.exists() && expectedSha256 != null) {
+                String actualSha256 = calculateSha256(destination);
+                if (expectedSha256.trim().equalsIgnoreCase(actualSha256)) {
                     log("✅ Skipping already downloaded file: " + destination.getName());
                     return true;
                 }
@@ -308,7 +317,7 @@ public class DownloadJNLP {
             log("⬇️ Downloading: " + urlStr);
             URL url = new URL(urlStr);
             try (InputStream in = url.openStream();
-                    FileOutputStream out = new FileOutputStream(destination)) {
+                 FileOutputStream out = new FileOutputStream(destination)) {
                 byte[] buffer = new byte[4096];
                 int bytesRead;
                 while ((bytesRead = in.read(buffer)) != -1) {
@@ -316,16 +325,16 @@ public class DownloadJNLP {
                 }
             }
 
-            if (expectedgetSha256 != null && !expectedgetSha256.trim().isEmpty()) {
-                String actualgetSha256 = calculategetSha256(destination);
-                log("🔍 Expected SHA-256: '" + expectedgetSha256 + "'");
-                log("🔍 Actual SHA-256:   '" + actualgetSha256 + "'");
-                log("🔍 Hash lengths - Expected: " + expectedgetSha256.length() + ", Actual: " + actualgetSha256.length());
-                
-                if (!expectedgetSha256.equals(actualgetSha256)) {
+            if (expectedSha256 != null && !expectedSha256.trim().isEmpty()) {
+                String actualSha256 = calculateSha256(destination);
+                log("🔍 Expected SHA-256: '" + expectedSha256.trim() + "'");
+                log("🔍 Actual SHA-256:   '" + actualSha256 + "'");
+                log("🔍 Hash lengths - Expected: " + expectedSha256.length() + ", Actual: " + actualSha256.length());
+
+                if (!expectedSha256.trim().equals(actualSha256)) {
                     log("❌ ERROR: SHA-256 mismatch for " + destination.getName());
-                    log("❌ Expected: " + expectedgetSha256);
-                    log("❌ Actual:   " + actualgetSha256);
+                    log("❌ Expected: " + expectedSha256.trim());
+                    log("❌ Actual:   " + actualSha256);
                     destination.delete();
                     return false;
                 }
@@ -340,10 +349,10 @@ public class DownloadJNLP {
         }
     }
 
-    private String calculategetSha256(File file) throws IOException, NoSuchAlgorithmException {
+    private String calculateSha256(File file) throws IOException, NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (InputStream fis = new FileInputStream(file);
-                DigestInputStream dis = new DigestInputStream(fis, digest)) {
+             DigestInputStream dis = new DigestInputStream(fis, digest)) {
             byte[] buffer = new byte[4096];
             while (dis.read(buffer) != -1) {
             }
