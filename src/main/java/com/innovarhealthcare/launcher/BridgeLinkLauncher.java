@@ -63,7 +63,7 @@ import java.util.UUID;
 
 public class BridgeLinkLauncher extends Application implements Progress {
     private static final boolean DEVELOP = false;
-    private static final String VERSION = DEVELOP ? "Development 1.1.0" : "1.1.0";
+    private static final String VERSION = DEVELOP ? "Development 1.2.0" : "1.2.0";
     private static final String LOG_FILE = "BridgeLinkLauncher-debug.log";
     private static final boolean DEBUG = false;
     private Image LAUNCHER_ICON;
