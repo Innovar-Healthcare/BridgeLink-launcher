@@ -21,12 +21,14 @@ public class Connection {
     private String jvmOptions;
     private boolean closeWindow;
     private boolean clearCacheJars;
+    private String customJavaHome;  // New field for custom Java home path
+    private boolean useCustomJavaHome; // New field to track if custom Java home radio is selected
     // Constructors, getters, and setters
     public Connection() {}
 
     public Connection(String id, String name, String address, String javaHome, String javaHomeBundledValue, String javaFxHome,
                       String heapSize, String icon, boolean showJavaConsole, boolean sslProtocolsCustom, String sslProtocols,
-                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions, boolean closeWindow, boolean clearCacheJars) {
+                      boolean sslCipherSuitesCustom, String sslCipherSuites, boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions, boolean closeWindow, boolean clearCacheJars, String customJavaHome, boolean useCustomJavaHome) {
         this.id = id;
         this.name = name;
         this.address = address;
@@ -47,6 +49,8 @@ public class Connection {
         this.jvmOptions = jvmOptions;
         this.closeWindow = closeWindow;
         this.clearCacheJars = clearCacheJars;
+        this.customJavaHome = customJavaHome;
+        this.useCustomJavaHome = useCustomJavaHome;
     }
 
     public String getId() { return id; }
@@ -95,4 +99,8 @@ public class Connection {
     public void setCloseWindow(boolean closeWindow) { this.closeWindow = closeWindow; }
     public boolean isClearCacheJars() { return clearCacheJars; }
     public void setClearCacheJars(boolean clearCacheJars) { this.clearCacheJars = clearCacheJars; }
+    public String getCustomJavaHome() { return customJavaHome; }
+    public void setCustomJavaHome(String customJavaHome) { this.customJavaHome = customJavaHome; }
+    public boolean isUseCustomJavaHome() { return useCustomJavaHome; }
+    public void setUseCustomJavaHome(boolean useCustomJavaHome) { this.useCustomJavaHome = useCustomJavaHome; }
 }

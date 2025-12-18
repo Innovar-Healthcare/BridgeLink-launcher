@@ -24,6 +24,8 @@ import javafx.scene.control.PasswordField;
 import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.CheckBox;
+import javafx.scene.control.RadioButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TreeCell;
@@ -83,6 +85,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private ComboBox<BundledJava> bundledJavaCombo;
     private ComboBox<HeapMemory> heapSizeCombo;
     private TextField jvmOptionsTextField;
+    private RadioButton bundledJavaRadio;
+    private RadioButton customJavaRadio;
+    private TextField customJavaTextField;
     private CheckBox showConsoleCheckBox;
     private CheckBox clearCacheCheckBox;
     private Button iconButton;
@@ -282,6 +287,10 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 heapSizeCombo.getSelectionModel().select(1);
                 jvmOptionsTextField.setText("");
                 clearCacheCheckBox.setSelected(false);
+                // Reset radio buttons to bundled and update control states
+                bundledJavaRadio.setSelected(true);
+                customJavaTextField.setText("");
+                updateJavaControlStates();
             }
 
             saveButton.setDisable(true);
@@ -292,10 +301,24 @@ public class BridgeLinkLauncher extends Application implements Progress {
             addressTextField.setDisable(!isConnection);
             usernameTextField.setDisable(!isConnection);
             passwordField.setDisable(!isConnection);
-            bundledJavaCombo.setDisable(!isConnection);
-            heapSizeCombo.setDisable(!isConnection);
             jvmOptionsTextField.setDisable(!isConnection);
             showConsoleCheckBox.setDisable(!isConnection);
+
+            // Don't directly control bundledJavaCombo and customJavaTextField here
+            // Let updateJavaControlStates() handle them based on radio button selection
+            // But disable radio buttons if no connection is selected
+            bundledJavaRadio.setDisable(!isConnection);
+            customJavaRadio.setDisable(!isConnection);
+            
+            // Only if no connection is selected, disable both Java controls
+            if (!isConnection) {
+                bundledJavaCombo.setDisable(true);
+                heapSizeCombo.setDisable(true);
+                customJavaTextField.setDisable(true);
+            } else {
+                heapSizeCombo.setDisable(false);
+                // Let updateJavaControlStates() handle bundledJavaCombo and customJavaTextField
+            }
 
             exportButton.setDisable(connectionsList.isEmpty());
         });
@@ -347,15 +370,36 @@ public class BridgeLinkLauncher extends Application implements Progress {
         HBox.setHgrow(usernameTextField, Priority.ALWAYS);
         HBox.setHgrow(passwordField, Priority.ALWAYS);
 
-        // Java Config row
-        HBox javaHeapRow = new HBox(10); // Combined Java Home and Max Heap Size
+        // Java Config rows
+        // Java Home row with radio buttons, combo box, and text field
+        HBox javaHomeRow = new HBox(10);
         Label javaHomeLabel = new Label("Java Home:");
+        ToggleGroup javaTypeGroup = new ToggleGroup();
+        bundledJavaRadio = new RadioButton("Bundled");
+        bundledJavaRadio.setToggleGroup(javaTypeGroup);
+        bundledJavaRadio.setSelected(true);
+        customJavaRadio = new RadioButton("Custom");
+        customJavaRadio.setToggleGroup(javaTypeGroup);
+        
         bundledJavaCombo = new ComboBox<>(FXCollections.observableArrayList(
                 new BundledJava("", "Java 17"),
                 new BundledJava("", "Java 8")
         ));
         bundledJavaCombo.getSelectionModel().select(0);
         bundledJavaCombo.setOnAction(e -> updateSaveButtonState());
+
+        // Custom Java text field
+        customJavaTextField = new TextField();
+        customJavaTextField.setPromptText("Enter custom Java home path (e.g., /usr/lib/jvm/java-11)");
+        customJavaTextField.setDisable(true); // Start disabled
+        customJavaTextField.textProperty().addListener((obs, oldVal, newVal) -> updateSaveButtonState());
+
+        javaHomeRow.getChildren().addAll(javaHomeLabel, bundledJavaRadio, customJavaRadio, bundledJavaCombo, customJavaTextField);
+        HBox.setHgrow(bundledJavaCombo, Priority.ALWAYS);
+        HBox.setHgrow(customJavaTextField, Priority.ALWAYS);
+
+        // Heap Size row
+        HBox heapSizeRow = new HBox(10);
         Label heapSizeLabel = new Label("Max Heap Size:");
         heapSizeCombo = new ComboBox<>(FXCollections.observableArrayList(
                 new HeapMemory("256m", "256 MB"),
@@ -366,9 +410,19 @@ public class BridgeLinkLauncher extends Application implements Progress {
         ));
         heapSizeCombo.getSelectionModel().select(1);
         heapSizeCombo.setOnAction(e -> updateSaveButtonState());
-        javaHeapRow.getChildren().addAll(javaHomeLabel, bundledJavaCombo, heapSizeLabel, heapSizeCombo);
-        HBox.setHgrow(bundledJavaCombo, Priority.ALWAYS);
+        heapSizeRow.getChildren().addAll(heapSizeLabel, heapSizeCombo);
         HBox.setHgrow(heapSizeCombo, Priority.ALWAYS);
+
+        // Radio button event handlers to enable/disable appropriate fields
+        bundledJavaRadio.setOnAction(e -> {
+            updateJavaControlStates();
+            updateSaveButtonState();
+        });
+
+        customJavaRadio.setOnAction(e -> {
+            updateJavaControlStates();
+            updateSaveButtonState();
+        });
 
         // JVM options row
         HBox jvmOptionsRow = new HBox(10);
@@ -419,7 +473,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
         iconRow.getChildren().addAll(iconSelectionLabel, iconButton);
         iconRow.setAlignment(Pos.CENTER_LEFT);
 
-        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHeapRow, jvmOptionsRow, consoleRow, iconRow);
+        configBox.getChildren().addAll(groupRow, addressRow, credentialsRow, javaHomeRow, heapSizeRow, jvmOptionsRow, consoleRow, iconRow);
 
         // Progress Section (unchanged)
         Separator separator = new Separator();
@@ -582,7 +636,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 TreeItem<Connection> groupItem = groupItems.computeIfAbsent(groupName,
                         k -> {
                             Connection groupConn = new Connection(null, "", null, null, null, null, null,
-                                    null, false, false, null, false, null, false, null, null, groupName, null, false, false);
+                                    null, false, false, null, false, null, false, null, null, groupName, null, false, false, null, false);
                             TreeItem<Connection> item = new TreeItem<>(groupConn);
                             item.setExpanded(true);
                             return item;
@@ -636,7 +690,17 @@ public class BridgeLinkLauncher extends Application implements Progress {
             while (nameExists(finalName)) {
                 finalName = name + " Copy " + cnt++;
             }
-            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false, "", "", "", "", false);
+            addConnection(finalName, "", "BUNDLED", "Java 17", "", "512m", "", false, "", false, "", false, "", "", "", "", false, "", false);
+        }
+    }
+
+    private void updateJavaControlStates() {
+        if (customJavaRadio.isSelected()) {
+            bundledJavaCombo.setDisable(true);
+            customJavaTextField.setDisable(false);
+        } else {
+            bundledJavaCombo.setDisable(false);
+            customJavaTextField.setDisable(true);
         }
     }
 
@@ -656,6 +720,9 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 if (newSelectedItem != null) {
                     treeSelectionModel.select(newSelectedItem);
                 }
+                
+                // Ensure the Java control states remain correct after saving
+                updateJavaControlStates();
             }
         }
     }
@@ -678,7 +745,7 @@ public class BridgeLinkLauncher extends Application implements Progress {
                     Connection newConn = new Connection(UUID.randomUUID().toString(), finalName,
                             addressTextField.getText(), getJavaHome(), bundledJavaCombo.getValue().toString(),
                             "", heapSizeCombo.getValue().toString(), "", showConsoleCheckBox.isSelected(),
-                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText(), jvmOptionsTextField.getText(), closeWindowCheckBox.isSelected(), clearCacheCheckBox.isSelected());
+                            false, "", false, "", false, usernameTextField.getText(), passwordField.getText(), groupTextField.getText(), jvmOptionsTextField.getText(), closeWindowCheckBox.isSelected(), clearCacheCheckBox.isSelected(), customJavaTextField.getText(), customJavaRadio.isSelected());
                     connectionsList.add(newConn);
                     updateTreeView();
                     saveConnections();
@@ -765,7 +832,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 DownloadJNLP download = new DownloadJNLP(host, cacheFolder, clearCacheCheckBox.isSelected());
                 currentDownload = download;
 
-                JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString(), this.jvmOptionsTextField.getText());
+                String customJavaHome = customJavaRadio.isSelected() ? customJavaTextField.getText() : null;
+                JavaConfig javaConfig = new JavaConfig(heapSizeCombo.getValue().toString(), this.bundledJavaCombo.getValue().toString(), this.jvmOptionsTextField.getText(), customJavaHome);
                 Credential credential = new Credential(StringUtils.trim(usernameTextField.getText()), StringUtils.trim(passwordField.getText()));
                 CodeBase codeBase = download.handle(this);
                 currentDownload = null;
@@ -971,7 +1039,6 @@ public class BridgeLinkLauncher extends Application implements Progress {
         addressTextField.setDisable(!finalEnabled);
         usernameTextField.setDisable(!finalEnabled);
         passwordField.setDisable(!finalEnabled);
-        bundledJavaCombo.setDisable(!finalEnabled);
         heapSizeCombo.setDisable(!finalEnabled);
         jvmOptionsTextField.setDisable(!finalEnabled);
         showConsoleCheckBox.setDisable(!finalEnabled);
@@ -981,6 +1048,19 @@ public class BridgeLinkLauncher extends Application implements Progress {
         duplicateButton.setDisable(!finalEnabled);
         deleteButton.setDisable(!finalEnabled);
         launchButton.setDisable(!finalEnabled);
+
+        // Handle Java controls specially - disable radio buttons if no connection selected
+        bundledJavaRadio.setDisable(!finalEnabled);
+        customJavaRadio.setDisable(!finalEnabled);
+        
+        if (!finalEnabled) {
+            // If no connection selected or launching, disable both Java controls
+            bundledJavaCombo.setDisable(true);
+            customJavaTextField.setDisable(true);
+        } else {
+            // If connection is selected and not launching, let updateJavaControlStates() handle the enables/disables
+            updateJavaControlStates();
+        }
 
         // Other UI elements only disabled during launch
         boolean launchEnabled = enabled;
@@ -1017,7 +1097,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
     }
 
     private String getJavaHome() {
-        return "BUNDLED";
+        if (customJavaRadio != null && customJavaRadio.isSelected()) {
+            return "CUSTOM";
+        } else {
+            return "BUNDLED";
+        }
     }
 
     private List<Connection> loadConnections() {
@@ -1058,11 +1142,11 @@ public class BridgeLinkLauncher extends Application implements Progress {
     private void addConnection(String name, String address, String javaHome, String javaHomeBundledValue,
                                String javaFxHome, String heapSize, String icon, boolean showJavaConsole,
                                String sslProtocols, boolean sslProtocolsCustom, String sslCipherSuites,
-                               boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions, boolean closeWindow) {
+                               boolean useLegacyDHSettings, String username, String password, String group, String jvmOptions, boolean closeWindow, String customJavaHome, boolean useCustomJavaHome) {
         Connection conn = new Connection(UUID.randomUUID().toString(), name, address, javaHome,
                 javaHomeBundledValue, javaFxHome, heapSize, icon, showJavaConsole,
                 sslProtocolsCustom, sslProtocols, false, sslCipherSuites, useLegacyDHSettings,
-                username, password, group, jvmOptions, closeWindow, false);
+                username, password, group, jvmOptions, closeWindow, false, customJavaHome, useCustomJavaHome);
         this.connectionsList.add(conn);
         updateTreeView(); // Update tree after adding
         saveConnections();
@@ -1096,6 +1180,20 @@ public class BridgeLinkLauncher extends Application implements Progress {
         closeWindowCheckBox.setSelected(conn.isCloseWindow());
         clearCacheCheckBox.setSelected(conn.isClearCacheJars());
 
+        // Handle custom Java home setting
+        String customJavaHome = conn.getCustomJavaHome();
+        customJavaTextField.setText(customJavaHome != null ? customJavaHome : "");
+        
+        // Set radio button based on stored preference
+        if (conn.isUseCustomJavaHome()) {
+            customJavaRadio.setSelected(true);
+        } else {
+            bundledJavaRadio.setSelected(true);
+        }
+
+        // Ensure control states are properly set
+        updateJavaControlStates();
+
         // Update icon UI - use tempSelectedIcon if set, otherwise use connection's icon
         String iconToDisplay = (tempSelectedIcon != null) ? tempSelectedIcon : conn.getIcon();
         updateIconButton(iconToDisplay);
@@ -1128,6 +1226,17 @@ public class BridgeLinkLauncher extends Application implements Progress {
         conn.setUseLegacyDHSettings(false);
         conn.setCloseWindow(this.closeWindowCheckBox.isSelected());
         conn.setClearCacheJars(this.clearCacheCheckBox.isSelected());
+
+        // Always save custom Java home value if it exists, regardless of radio selection
+        String customJavaPath = customJavaTextField.getText().trim();
+        if (!customJavaPath.isEmpty()) {
+            conn.setCustomJavaHome(customJavaPath);
+        } else {
+            conn.setCustomJavaHome(null);
+        }
+        
+        // Save the radio button selection state
+        conn.setUseCustomJavaHome(customJavaRadio.isSelected());
     }
 
     private void updateSaveButtonState() {
@@ -1162,6 +1271,8 @@ public class BridgeLinkLauncher extends Application implements Progress {
                 StringUtils.equals(selected.getPassword(), this.passwordField.getText()) &&
                 StringUtils.equals(selected.getJavaHome(), getJavaHome()) &&
                 StringUtils.equals(selected.getJavaHomeBundledValue(), this.bundledJavaCombo.getValue().toString()) &&
+                StringUtils.equals(selected.getCustomJavaHome(), this.customJavaTextField.getText()) &&
+                selected.isUseCustomJavaHome() == customJavaRadio.isSelected() &&
                 StringUtils.equals(selected.getHeapSize(), this.heapSizeCombo.getValue().toString()) &&
                 StringUtils.equals(selected.getJvmOptions(), this.jvmOptionsTextField.getText()) &&
                 selected.isShowJavaConsole() == showConsoleCheckBox.isSelected() &&

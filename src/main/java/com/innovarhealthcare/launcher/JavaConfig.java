@@ -15,11 +15,20 @@ public class JavaConfig {
     private String maxHeapSize;
     private String javaHome;
     private String jvmOptions;
+    private String customJavaHome; // Custom Java home path
 
     public JavaConfig(String maxHeapSize, String javaHome, String jvmOptions) {
         this.maxHeapSize = maxHeapSize;
         this.javaHome = javaHome;
         this.jvmOptions = jvmOptions;
+        this.customJavaHome = null;
+    }
+
+    public JavaConfig(String maxHeapSize, String javaHome, String jvmOptions, String customJavaHome) {
+        this.maxHeapSize = maxHeapSize;
+        this.javaHome = javaHome;
+        this.jvmOptions = jvmOptions;
+        this.customJavaHome = customJavaHome;
     }
 
     public String getMaxHeapSize() {
@@ -65,6 +74,16 @@ public class JavaConfig {
         final boolean mac = SystemUtils.IS_OS_MAC;
         final String exe = win ? "java.exe" : "java";
 
+        // First priority: use custom Java home if specified
+        if (customJavaHome != null && !customJavaHome.isEmpty()) {
+            Path customPath = Paths.get(customJavaHome, "bin", exe);
+            if (Files.isExecutable(customPath)) {
+                return customPath.toString();
+            }
+            // If custom path doesn't work, log warning and fall through to bundled
+            System.err.println("Warning: Custom Java home not executable: " + customPath);
+        }
+
         // Choose the expected bundled layout
         Path candidate;
         if ("Java 17".equals(javaHome)) {
@@ -102,6 +121,14 @@ public class JavaConfig {
 
         // Fallback 3: rely on PATH
         return exe;
+    }
+
+    public String getCustomJavaHome() {
+        return customJavaHome;
+    }
+
+    public void setCustomJavaHome(String customJavaHome) {
+        this.customJavaHome = customJavaHome;
     }
 
 }
