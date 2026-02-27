@@ -961,25 +961,48 @@ public class BridgeLinkLauncher extends Application implements Progress {
         }
     }
 
-    // New method to export selected connection
     private void exportConnections() {
         if (isLaunching || connectionsList.isEmpty()) return;
 
+        ExportOptionsDialog exportDialog = new ExportOptionsDialog(primaryStage, LAUNCHER_ICON);
+        if (!exportDialog.showAndWait()) return;
+
         FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Export All Connections");
+        fileChooser.setTitle("Export Connections");
         fileChooser.getExtensionFilters().add(
                 new FileChooser.ExtensionFilter("JSON Files", "*.json")
         );
-        fileChooser.setInitialFileName("all_connections.json"); // Default name for all connections
+        fileChooser.setInitialFileName("all_connections.json");
         File file = fileChooser.showSaveDialog(primaryStage);
 
         if (file != null) {
-            try {
-                ObjectMapper objectMapper = new ObjectMapper();
-                objectMapper.writeValue(file, connectionsList); // Export entire list
-            } catch (IOException e) {
-                showAlert("Failed to export connections: " + e.getMessage());
+            writeConnectionsToFile(file, exportDialog.isExportWithCredential());
+        }
+    }
+
+    private void writeConnectionsToFile(File file, boolean withCredential) {
+        try {
+            ObjectMapper objectMapper = new ObjectMapper();
+            if (!withCredential) {
+                List<Connection> sanitized = new ArrayList<>();
+                for (Connection conn : connectionsList) {
+                    Connection copy = new Connection(
+                            conn.getId(), conn.getName(), conn.getAddress(),
+                            conn.getJavaHome(), conn.getJavaHomeBundledValue(), conn.getJavaFxHome(),
+                            conn.getHeapSize(), conn.getIcon(), conn.isShowJavaConsole(),
+                            conn.isSslProtocolsCustom(), conn.getSslProtocols(),
+                            conn.isSslCipherSuitesCustom(), conn.getSslCipherSuites(),
+                            conn.isUseLegacyDHSettings(), "", "",
+                            conn.getGroup(), conn.getJvmOptions(), conn.isCloseWindow(),
+                            conn.isClearCacheJars(), conn.getCustomJavaHome(), conn.isUseCustomJavaHome());
+                    sanitized.add(copy);
+                }
+                objectMapper.writeValue(file, sanitized);
+            } else {
+                objectMapper.writeValue(file, connectionsList);
             }
+        } catch (IOException e) {
+            showAlert("Failed to export connections: " + e.getMessage());
         }
     }
 
