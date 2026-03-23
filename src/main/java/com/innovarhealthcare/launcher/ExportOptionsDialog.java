@@ -49,8 +49,8 @@ public class ExportOptionsDialog {
 
         Label promptLabel = new Label("Export options:");
 
-        CheckBox credentialCheckBox = new CheckBox("Export connections without user credentials");
-        credentialCheckBox.setSelected(true); // default: strip credentials
+        CheckBox credentialCheckBox = new CheckBox("Include user credentials");
+        credentialCheckBox.setSelected(false); // default: strip credentials
 
         HBox buttonBox = new HBox(10);
         buttonBox.setAlignment(Pos.CENTER_RIGHT);
@@ -58,7 +58,7 @@ public class ExportOptionsDialog {
         Button okButton = new Button("OK");
         okButton.setDefaultButton(true);
         okButton.setOnAction(e -> {
-            exportWithCredential = !credentialCheckBox.isSelected();
+            exportWithCredential = credentialCheckBox.isSelected();
             confirmed = true;
             dialogStage.close();
         });
