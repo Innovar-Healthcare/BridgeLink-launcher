@@ -19,6 +19,26 @@ To prevent this, you can do one of the following:
   * In System Settings --> Privacy & Security Page --> Scroll Down to bottom --> Select "Allow Application From" --> Select "Anywhere" (the option will now appear) --> Type Password
 Completed
 
+## Upgrading via macOS DMG
+
+When installing a new version of BridgeLink Launcher using the macOS `.dmg`, your connection data is stored inside the application bundle and **will be overwritten** if you simply drag the new version into `/Applications`.
+
+To preserve your connections and settings, follow these steps before upgrading:
+
+1. **Before upgrading**, open Finder and navigate to your current application:
+   - Right-click `BridgeLink Administrator Launcher.app` → **Show Package Contents**
+   - Navigate to `Contents/Resources/app/data/`
+   - Copy the entire `data` folder to a safe temporary location (e.g., your Desktop)
+
+2. **Install the new version** by mounting the new `.dmg` and dragging the application to `/Applications`, replacing the old one.
+
+3. **After upgrading**, restore your data:
+   - Right-click the newly installed app → **Show Package Contents**
+   - Navigate to `Contents/Resources/app/`
+   - Copy your saved `data` folder back into this location, replacing the new empty one
+
+Your connections and settings will now be restored in the upgraded application.
+
 
 ## License
 
