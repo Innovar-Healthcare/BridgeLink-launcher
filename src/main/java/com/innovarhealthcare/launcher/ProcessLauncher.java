@@ -134,6 +134,8 @@ public class ProcessLauncher {
             command.add(credential.getPassword());
         }
 
+        protectArguments(command);
+
         log("🔍 FINAL COMMAND ANALYSIS:");
         log("📏 Total command parts: " + command.size());
         for (int i = 0; i < command.size(); i++) {
@@ -192,7 +194,9 @@ public class ProcessLauncher {
             consoleCommand.add("-cp");
             consoleCommand.add("lib/java-console.jar");
             consoleCommand.add("com.innovarhealthcare.launcher.JavaConsoleDialog");
-            
+
+            protectArguments(consoleCommand);
+
             ProcessBuilder consolePb = new ProcessBuilder(consoleCommand);
 
             // Start Console Process
@@ -249,6 +253,20 @@ public class ProcessLauncher {
         log("⏰ Check the dock/taskbar now to see if the tooltip shows 'BridgeLink Administrator'");
     }
     
+    /**
+     * Windows rebuilds the argument list into a single command line, which silently eats any quote
+     * inside an argument - a saved password of {@code pa"ss} reaches the Administrator as
+     * {@code pass} (issue #165). Rewrite the affected arguments so they survive that round trip.
+     *
+     * <p>Index 0 is skipped: {@code ProcessImpl} resolves the executable path itself and pre-quoting
+     * it would break that lookup.
+     */
+    private void protectArguments(List<String> command) {
+        for (int i = 1; i < command.size(); i++) {
+            command.set(i, WindowsArguments.protect(command.get(i)));
+        }
+    }
+
     private String getProcessId(Process process) {
         try {
             // Try to get PID using reflection for Java 9+
