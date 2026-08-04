@@ -18,6 +18,7 @@ import java.util.List;
 public class ProcessLauncher {
     private static final String LOG_FILE = "process-launcher-debug.log";
     private static final boolean DEBUG = false;
+    private static final String REDACTED = "********";
     
     // Overloaded method for backward compatibility
     public void launch(JavaConfig javaConfig, Credential credential, CodeBase codeBase, boolean isShowConsole) throws Exception {
@@ -130,16 +131,24 @@ public class ProcessLauncher {
             command.add(credential.getUsername());
         }
 
+        int passwordIndex = -1;
         if(StringUtils.isNotBlank(credential.getPassword())){
+            passwordIndex = command.size();
             command.add(credential.getPassword());
         }
 
         protectArguments(command);
 
+        // Never let the password reach stdout or the log file.
+        List<String> loggableCommand = new ArrayList<>(command);
+        if (passwordIndex >= 0) {
+            loggableCommand.set(passwordIndex, REDACTED);
+        }
+
         log("🔍 FINAL COMMAND ANALYSIS:");
-        log("📏 Total command parts: " + command.size());
-        for (int i = 0; i < command.size(); i++) {
-            String part = command.get(i);
+        log("📏 Total command parts: " + loggableCommand.size());
+        for (int i = 0; i < loggableCommand.size(); i++) {
+            String part = loggableCommand.get(i);
             if (part.startsWith("-Xdock:") || part.startsWith("-Dapp.") || part.startsWith("-Dapple.awt.") || part.startsWith("-Dcom.apple.")) {
                 log("   [" + i + "] 🎯 " + part + " ← IMPORTANT FOR DOCK/TASKBAR");
             } else {
@@ -152,7 +161,7 @@ public class ProcessLauncher {
 
         log("🚀 Starting process...");
         // Debug: Print the command being executed (useful for troubleshooting)
-        System.out.println("DEBUG: Executing command: " + String.join(" ", command));
+        System.out.println("DEBUG: Executing command: " + String.join(" ", loggableCommand));
 
         Process targetProcess;
         if(isShowConsole) {

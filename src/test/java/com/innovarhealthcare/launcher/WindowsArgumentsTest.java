@@ -115,7 +115,9 @@ public class WindowsArgumentsTest {
 
     private String launchAndEcho(String username, String password) throws Exception {
         List<String> command = new ArrayList<String>();
-        command.add(System.getProperty("java.home") + File.separator + "bin" + File.separator + "java");
+        // "java.exe", matching JavaConfig#getJavaHomeBuilder - this test is Windows-only, and
+        // relying on CreateProcess to infer the extension would not mirror the production launch.
+        command.add(System.getProperty("java.home") + File.separator + "bin" + File.separator + "java.exe");
         command.add("-cp");
         command.add(testClassesDirectory());
         command.add(ArgumentEchoMain.class.getName());
