@@ -18,6 +18,7 @@ import java.util.List;
 public class ProcessLauncher {
     private static final String LOG_FILE = "process-launcher-debug.log";
     private static final boolean DEBUG = false;
+    private static final String REDACTED = "********";
     
     // Overloaded method for backward compatibility
     public void launch(JavaConfig javaConfig, Credential credential, CodeBase codeBase, boolean isShowConsole) throws Exception {
@@ -130,14 +131,24 @@ public class ProcessLauncher {
             command.add(credential.getUsername());
         }
 
+        int passwordIndex = -1;
         if(StringUtils.isNotBlank(credential.getPassword())){
+            passwordIndex = command.size();
             command.add(credential.getPassword());
         }
 
+        protectArguments(command);
+
+        // Never let the password reach stdout or the log file.
+        List<String> loggableCommand = new ArrayList<>(command);
+        if (passwordIndex >= 0) {
+            loggableCommand.set(passwordIndex, REDACTED);
+        }
+
         log("🔍 FINAL COMMAND ANALYSIS:");
-        log("📏 Total command parts: " + command.size());
-        for (int i = 0; i < command.size(); i++) {
-            String part = command.get(i);
+        log("📏 Total command parts: " + loggableCommand.size());
+        for (int i = 0; i < loggableCommand.size(); i++) {
+            String part = loggableCommand.get(i);
             if (part.startsWith("-Xdock:") || part.startsWith("-Dapp.") || part.startsWith("-Dapple.awt.") || part.startsWith("-Dcom.apple.")) {
                 log("   [" + i + "] 🎯 " + part + " ← IMPORTANT FOR DOCK/TASKBAR");
             } else {
@@ -150,7 +161,7 @@ public class ProcessLauncher {
 
         log("🚀 Starting process...");
         // Debug: Print the command being executed (useful for troubleshooting)
-        System.out.println("DEBUG: Executing command: " + String.join(" ", command));
+        System.out.println("DEBUG: Executing command: " + String.join(" ", loggableCommand));
 
         Process targetProcess;
         if(isShowConsole) {
@@ -192,7 +203,9 @@ public class ProcessLauncher {
             consoleCommand.add("-cp");
             consoleCommand.add("lib/java-console.jar");
             consoleCommand.add("com.innovarhealthcare.launcher.JavaConsoleDialog");
-            
+
+            protectArguments(consoleCommand);
+
             ProcessBuilder consolePb = new ProcessBuilder(consoleCommand);
 
             // Start Console Process
@@ -249,6 +262,20 @@ public class ProcessLauncher {
         log("⏰ Check the dock/taskbar now to see if the tooltip shows 'BridgeLink Administrator'");
     }
     
+    /**
+     * Windows rebuilds the argument list into a single command line, which silently eats any quote
+     * inside an argument - a saved password of {@code pa"ss} reaches the Administrator as
+     * {@code pass} (issue #165). Rewrite the affected arguments so they survive that round trip.
+     *
+     * <p>Index 0 is skipped: {@code ProcessImpl} resolves the executable path itself and pre-quoting
+     * it would break that lookup.
+     */
+    private void protectArguments(List<String> command) {
+        for (int i = 1; i < command.size(); i++) {
+            command.set(i, WindowsArguments.protect(command.get(i)));
+        }
+    }
+
     private String getProcessId(Process process) {
         try {
             // Try to get PID using reflection for Java 9+
