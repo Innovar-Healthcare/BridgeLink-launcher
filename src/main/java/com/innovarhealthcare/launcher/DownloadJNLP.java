@@ -44,12 +44,45 @@ public class DownloadJNLP {
     private boolean clearCacheJars = false;
 
     public DownloadJNLP(String host, File cacheFolder, boolean clearCacheJars) {
-        if (host.endsWith("/")) {
-            host = host.substring(0, host.length() - 1);
-        }
-        this.host = host;
+        this.host = normalizeHost(host);
         this.cacheFolder = cacheFolder;
         this.clearCacheJars = clearCacheJars;
+    }
+
+    /**
+     * Normalises a user-entered server address into the bare BridgeLink base URL
+     * (scheme://host[:port]) that the rest of the launcher expects.
+     *
+     * <p>Strips a trailing slash and a trailing {@code /webstart} or
+     * {@code /webstart.jnlp} segment, so addresses such as
+     * {@code https://host:8443/webstart} or {@code https://host:8443/webstart.jnlp}
+     * resolve the same way as {@code https://host:8443}. This restores the tolerance
+     * of the legacy MCAL launcher (issue #22).
+     *
+     * <p>The scheme and port are deliberately left untouched so reverse-proxy
+     * deployments (for example {@code https://host} served on port 443) keep working.
+     */
+    static String normalizeHost(String host) {
+        if (host == null) {
+            return "";
+        }
+        String h = stripTrailing(host.trim(), "/");
+        if (h.endsWith("/webstart.jnlp")) {
+            h = h.substring(0, h.length() - "/webstart.jnlp".length());
+        }
+        h = stripTrailing(h, "/");
+        if (h.endsWith("/webstart")) {
+            h = h.substring(0, h.length() - "/webstart".length());
+        }
+        return stripTrailing(h, "/");
+    }
+
+    private static String stripTrailing(String value, String suffix) {
+        String result = value;
+        while (result.endsWith(suffix)) {
+            result = result.substring(0, result.length() - suffix.length());
+        }
+        return result;
     }
 
     public CodeBase handle(Progress progress) throws  Exception{
